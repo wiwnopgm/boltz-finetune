@@ -6,6 +6,8 @@ build-backend = "setuptools.build_meta"
 name = "boltz"
 requires-python = ">=3.9"
 dynamic = ["version"]
+description = "Boltz-1"
+readme = "README.md"
 dependencies = [
     "torch>=2.2",
     "numpy==1.26.3",
