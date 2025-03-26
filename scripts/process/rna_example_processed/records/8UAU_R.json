@@ -1,0 +1,1 @@
+{"id": "8UAU_R", "structure": {"id": "8UAU_R", "type": "rna", "resolution": 0.0, "num_chains": 1, "num_residues": 76, "num_atoms": 76, "num_interfaces": 0}, "chains": [{"chain_id": 0, "chain_name": "R", "mol_type": 2, "msa_id": "8UAU_R", "cluster_id": -1, "num_residues": 76, "valid": true}], "interfaces": [], "inference_options": null}

@@ -1,0 +1,1 @@
+{"id": "8AW3_1", "structure": {"id": "8AW3_1", "type": "rna", "resolution": 0.0, "num_chains": 1, "num_residues": 73, "num_atoms": 73, "num_interfaces": 0}, "chains": [{"chain_id": 0, "chain_name": "1", "mol_type": 2, "msa_id": "8AW3_1", "cluster_id": -1, "num_residues": 73, "valid": true}], "interfaces": [], "inference_options": null}

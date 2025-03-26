@@ -1,0 +1,1 @@
+{"id": "8UBE_I", "structure": {"id": "8UBE_I", "type": "rna", "resolution": 0.0, "num_chains": 1, "num_residues": 139, "num_atoms": 139, "num_interfaces": 0}, "chains": [{"chain_id": 0, "chain_name": "I", "mol_type": 2, "msa_id": "8UBE_I", "cluster_id": -1, "num_residues": 139, "valid": true}], "interfaces": [], "inference_options": null}

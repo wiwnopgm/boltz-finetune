@@ -1,0 +1,27 @@
+# Core inputs required:
+feats = {
+    # Single sequence features
+    "nuc_type": torch.Tensor,            # [batch, seq_len, 4] - One-hot encoded nucleotides
+    "profile": torch.Tensor,             # [batch, seq_len, profile_dim] - Evolutionary profile
+    "deletion_mean": torch.Tensor,       # [batch, seq_len] - Mean deletion values
+    
+    # MSA features
+    "rna_msa": torch.Tensor,             # [batch, num_seqs, seq_len, rna_tokens] - Multiple sequence alignment
+    "has_deletion": torch.Tensor,        # [batch, num_seqs, seq_len] - Binary deletion indicator
+    "deletion_value": torch.Tensor,      # [batch, num_seqs, seq_len] - Deletion values in alignment
+    "msa_mask": torch.Tensor,            # [batch, num_seqs, seq_len] - Mask for valid MSA entries
+    
+    # Masking
+    "token_pad_mask": torch.Tensor,      # [batch, seq_len] - Sequence padding mask
+    
+    # Required if use_paired_feature=True (default)
+    "msa_paired": torch.Tensor,          # [batch, num_seqs, seq_len] - Paired positions indicator
+    
+    # Required if use_secondary_structure=True (default)
+    "stem_prob": torch.Tensor,           # [batch, num_seqs, seq_len] - Probability in stem
+    "loop_prob": torch.Tensor,           # [batch, num_seqs, seq_len] - Probability in loop
+    "bulge_prob": torch.Tensor,          # [batch, num_seqs, seq_len] - Probability in bulge
+    
+    # Optional but recommended
+    "sec_structure": torch.Tensor,       # [batch, seq_len, structure_dim] - Secondary structure encoding
+}

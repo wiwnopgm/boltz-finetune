@@ -1,0 +1,1 @@
+{"id": "2NOQ_A", "structure": {"id": "2NOQ_A", "type": "rna", "resolution": 0.0, "num_chains": 1, "num_residues": 190, "num_atoms": 190, "num_interfaces": 0}, "chains": [{"chain_id": 0, "chain_name": "A", "mol_type": 2, "msa_id": "2NOQ_A", "cluster_id": -1, "num_residues": 190, "valid": true}], "interfaces": [], "inference_options": null}

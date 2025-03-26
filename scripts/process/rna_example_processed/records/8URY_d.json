@@ -1,0 +1,1 @@
+{"id": "8URY_d", "structure": {"id": "8URY_d", "type": "rna", "resolution": 0.0, "num_chains": 1, "num_residues": 120, "num_atoms": 120, "num_interfaces": 0}, "chains": [{"chain_id": 0, "chain_name": "d", "mol_type": 2, "msa_id": "8URY_d", "cluster_id": -1, "num_residues": 120, "valid": true}], "interfaces": [], "inference_options": null}

@@ -1,0 +1,1 @@
+{"id": "5MC6_BS", "structure": {"id": "5MC6_BS", "type": "rna", "resolution": 0.0, "num_chains": 1, "num_residues": 158, "num_atoms": 158, "num_interfaces": 0}, "chains": [{"chain_id": 0, "chain_name": "A", "mol_type": 2, "msa_id": "5MC6_BS", "cluster_id": -1, "num_residues": 158, "valid": true}], "interfaces": [], "inference_options": null}

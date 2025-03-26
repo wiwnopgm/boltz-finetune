@@ -1,0 +1,1 @@
+{"id": "7ZPQ_6", "structure": {"id": "7ZPQ_6", "type": "rna", "resolution": 0.0, "num_chains": 1, "num_residues": 76, "num_atoms": 76, "num_interfaces": 0}, "chains": [{"chain_id": 0, "chain_name": "6", "mol_type": 2, "msa_id": "7ZPQ_6", "cluster_id": -1, "num_residues": 76, "valid": true}], "interfaces": [], "inference_options": null}

@@ -1,0 +1,109 @@
+Importing NaN handler...
+2025-03-09 19:06:33,406 - NaN-Handler - INFO - Applying memory optimizations...
+2025-03-09 19:06:33,698 - NaN-Handler - INFO - Successfully patched triangle attention modules with NaN handling and memory optimization
+2025-03-09 19:06:33,699 - NaN-Handler - INFO - Triangle attention modules patched with NaN handling
+2025-03-09 19:06:33,699 - NaN-Handler - INFO - Patched torch.nn.functional.softmax with NaN-safe version
+2025-03-09 19:06:33,699 - NaN-Handler - INFO - NaN handling initialized and ready
+NaN handler activated successfully
+Starting training script...
+Running training script: scripts/train/train.py
+2025-03-09 19:06:35,797 - NaN-Handler - INFO - Registered memory optimization hooks for TriangleAttentionStartingNode
+2025-03-09 19:06:35,798 - NaN-Handler - INFO - Registered memory optimization hooks for TriangleAttentionEndingNode
+2025-03-09 19:06:35,831 - NaN-Handler - INFO - Registered memory optimization hooks for TriangleAttentionStartingNode
+2025-03-09 19:06:35,832 - NaN-Handler - INFO - Registered memory optimization hooks for TriangleAttentionEndingNode
+2025-03-09 19:06:36,013 - NaN-Handler - INFO - Registered memory optimization hooks for TriangleAttentionStartingNode
+2025-03-09 19:06:36,014 - NaN-Handler - INFO - Registered memory optimization hooks for TriangleAttentionEndingNode
+2025-03-09 19:06:36,197 - NaN-Handler - INFO - Registered memory optimization hooks for TriangleAttentionStartingNode
+2025-03-09 19:06:36,198 - NaN-Handler - INFO - Registered memory optimization hooks for TriangleAttentionEndingNode
+2025-03-09 19:06:36,380 - NaN-Handler - INFO - Registered memory optimization hooks for TriangleAttentionStartingNode
+2025-03-09 19:06:36,381 - NaN-Handler - INFO - Registered memory optimization hooks for TriangleAttentionEndingNode
+2025-03-09 19:06:36,564 - NaN-Handler - INFO - Registered memory optimization hooks for TriangleAttentionStartingNode
+2025-03-09 19:06:36,565 - NaN-Handler - INFO - Registered memory optimization hooks for TriangleAttentionEndingNode
+2025-03-09 19:06:36,748 - NaN-Handler - INFO - Registered memory optimization hooks for TriangleAttentionStartingNode
+2025-03-09 19:06:36,749 - NaN-Handler - INFO - Registered memory optimization hooks for TriangleAttentionEndingNode
+2025-03-09 19:06:36,934 - NaN-Handler - INFO - Registered memory optimization hooks for TriangleAttentionStartingNode
+2025-03-09 19:06:36,935 - NaN-Handler - INFO - Registered memory optimization hooks for TriangleAttentionEndingNode
+2025-03-09 19:06:37,115 - NaN-Handler - INFO - Registered memory optimization hooks for TriangleAttentionStartingNode
+2025-03-09 19:06:37,116 - NaN-Handler - INFO - Registered memory optimization hooks for TriangleAttentionEndingNode
+2025-03-09 19:06:37,301 - NaN-Handler - INFO - Registered memory optimization hooks for TriangleAttentionStartingNode
+2025-03-09 19:06:37,302 - NaN-Handler - INFO - Registered memory optimization hooks for TriangleAttentionEndingNode
+2025-03-09 19:06:37,484 - NaN-Handler - INFO - Registered memory optimization hooks for TriangleAttentionStartingNode
+2025-03-09 19:06:37,485 - NaN-Handler - INFO - Registered memory optimization hooks for TriangleAttentionEndingNode
+2025-03-09 19:06:37,666 - NaN-Handler - INFO - Registered memory optimization hooks for TriangleAttentionStartingNode
+2025-03-09 19:06:37,667 - NaN-Handler - INFO - Registered memory optimization hooks for TriangleAttentionEndingNode
+2025-03-09 19:06:37,890 - NaN-Handler - INFO - Registered memory optimization hooks for TriangleAttentionStartingNode
+2025-03-09 19:06:37,891 - NaN-Handler - INFO - Registered memory optimization hooks for TriangleAttentionEndingNode
+2025-03-09 19:06:38,103 - NaN-Handler - INFO - Registered memory optimization hooks for TriangleAttentionStartingNode
+2025-03-09 19:06:38,104 - NaN-Handler - INFO - Registered memory optimization hooks for TriangleAttentionEndingNode
+2025-03-09 19:06:38,287 - NaN-Handler - INFO - Registered memory optimization hooks for TriangleAttentionStartingNode
+2025-03-09 19:06:38,288 - NaN-Handler - INFO - Registered memory optimization hooks for TriangleAttentionEndingNode
+2025-03-09 19:06:38,471 - NaN-Handler - INFO - Registered memory optimization hooks for TriangleAttentionStartingNode
+2025-03-09 19:06:38,472 - NaN-Handler - INFO - Registered memory optimization hooks for TriangleAttentionEndingNode
+2025-03-09 19:06:38,666 - NaN-Handler - INFO - Registered memory optimization hooks for TriangleAttentionStartingNode
+2025-03-09 19:06:38,667 - NaN-Handler - INFO - Registered memory optimization hooks for TriangleAttentionEndingNode
+2025-03-09 19:06:38,854 - NaN-Handler - INFO - Registered memory optimization hooks for TriangleAttentionStartingNode
+2025-03-09 19:06:38,855 - NaN-Handler - INFO - Registered memory optimization hooks for TriangleAttentionEndingNode
+2025-03-09 19:06:39,039 - NaN-Handler - INFO - Registered memory optimization hooks for TriangleAttentionStartingNode
+2025-03-09 19:06:39,040 - NaN-Handler - INFO - Registered memory optimization hooks for TriangleAttentionEndingNode
+2025-03-09 19:06:39,223 - NaN-Handler - INFO - Registered memory optimization hooks for TriangleAttentionStartingNode
+2025-03-09 19:06:39,224 - NaN-Handler - INFO - Registered memory optimization hooks for TriangleAttentionEndingNode
+2025-03-09 19:06:39,406 - NaN-Handler - INFO - Registered memory optimization hooks for TriangleAttentionStartingNode
+2025-03-09 19:06:39,407 - NaN-Handler - INFO - Registered memory optimization hooks for TriangleAttentionEndingNode
+2025-03-09 19:06:39,591 - NaN-Handler - INFO - Registered memory optimization hooks for TriangleAttentionStartingNode
+2025-03-09 19:06:39,592 - NaN-Handler - INFO - Registered memory optimization hooks for TriangleAttentionEndingNode
+2025-03-09 19:06:39,775 - NaN-Handler - INFO - Registered memory optimization hooks for TriangleAttentionStartingNode
+2025-03-09 19:06:39,775 - NaN-Handler - INFO - Registered memory optimization hooks for TriangleAttentionEndingNode
+2025-03-09 19:06:39,958 - NaN-Handler - INFO - Registered memory optimization hooks for TriangleAttentionStartingNode
+2025-03-09 19:06:39,959 - NaN-Handler - INFO - Registered memory optimization hooks for TriangleAttentionEndingNode
+2025-03-09 19:06:40,146 - NaN-Handler - INFO - Registered memory optimization hooks for TriangleAttentionStartingNode
+2025-03-09 19:06:40,147 - NaN-Handler - INFO - Registered memory optimization hooks for TriangleAttentionEndingNode
+2025-03-09 19:06:40,334 - NaN-Handler - INFO - Registered memory optimization hooks for TriangleAttentionStartingNode
+2025-03-09 19:06:40,335 - NaN-Handler - INFO - Registered memory optimization hooks for TriangleAttentionEndingNode
+2025-03-09 19:06:40,519 - NaN-Handler - INFO - Registered memory optimization hooks for TriangleAttentionStartingNode
+2025-03-09 19:06:40,520 - NaN-Handler - INFO - Registered memory optimization hooks for TriangleAttentionEndingNode
+2025-03-09 19:06:40,703 - NaN-Handler - INFO - Registered memory optimization hooks for TriangleAttentionStartingNode
+2025-03-09 19:06:40,704 - NaN-Handler - INFO - Registered memory optimization hooks for TriangleAttentionEndingNode
+2025-03-09 19:06:40,887 - NaN-Handler - INFO - Registered memory optimization hooks for TriangleAttentionStartingNode
+2025-03-09 19:06:40,888 - NaN-Handler - INFO - Registered memory optimization hooks for TriangleAttentionEndingNode
+2025-03-09 19:06:41,076 - NaN-Handler - INFO - Registered memory optimization hooks for TriangleAttentionStartingNode
+2025-03-09 19:06:41,077 - NaN-Handler - INFO - Registered memory optimization hooks for TriangleAttentionEndingNode
+2025-03-09 19:06:41,265 - NaN-Handler - INFO - Registered memory optimization hooks for TriangleAttentionStartingNode
+2025-03-09 19:06:41,266 - NaN-Handler - INFO - Registered memory optimization hooks for TriangleAttentionEndingNode
+2025-03-09 19:06:41,454 - NaN-Handler - INFO - Registered memory optimization hooks for TriangleAttentionStartingNode
+2025-03-09 19:06:41,455 - NaN-Handler - INFO - Registered memory optimization hooks for TriangleAttentionEndingNode
+2025-03-09 19:06:41,645 - NaN-Handler - INFO - Registered memory optimization hooks for TriangleAttentionStartingNode
+2025-03-09 19:06:41,646 - NaN-Handler - INFO - Registered memory optimization hooks for TriangleAttentionEndingNode
+2025-03-09 19:06:41,834 - NaN-Handler - INFO - Registered memory optimization hooks for TriangleAttentionStartingNode
+2025-03-09 19:06:41,835 - NaN-Handler - INFO - Registered memory optimization hooks for TriangleAttentionEndingNode
+2025-03-09 19:06:42,023 - NaN-Handler - INFO - Registered memory optimization hooks for TriangleAttentionStartingNode
+2025-03-09 19:06:42,024 - NaN-Handler - INFO - Registered memory optimization hooks for TriangleAttentionEndingNode
+2025-03-09 19:06:42,213 - NaN-Handler - INFO - Registered memory optimization hooks for TriangleAttentionStartingNode
+2025-03-09 19:06:42,214 - NaN-Handler - INFO - Registered memory optimization hooks for TriangleAttentionEndingNode
+2025-03-09 19:06:42,400 - NaN-Handler - INFO - Registered memory optimization hooks for TriangleAttentionStartingNode
+2025-03-09 19:06:42,401 - NaN-Handler - INFO - Registered memory optimization hooks for TriangleAttentionEndingNode
+2025-03-09 19:06:42,586 - NaN-Handler - INFO - Registered memory optimization hooks for TriangleAttentionStartingNode
+2025-03-09 19:06:42,587 - NaN-Handler - INFO - Registered memory optimization hooks for TriangleAttentionEndingNode
+2025-03-09 19:06:42,768 - NaN-Handler - INFO - Registered memory optimization hooks for TriangleAttentionStartingNode
+2025-03-09 19:06:42,769 - NaN-Handler - INFO - Registered memory optimization hooks for TriangleAttentionEndingNode
+2025-03-09 19:06:42,952 - NaN-Handler - INFO - Registered memory optimization hooks for TriangleAttentionStartingNode
+2025-03-09 19:06:42,953 - NaN-Handler - INFO - Registered memory optimization hooks for TriangleAttentionEndingNode
+2025-03-09 19:06:43,137 - NaN-Handler - INFO - Registered memory optimization hooks for TriangleAttentionStartingNode
+2025-03-09 19:06:43,138 - NaN-Handler - INFO - Registered memory optimization hooks for TriangleAttentionEndingNode
+2025-03-09 19:06:43,322 - NaN-Handler - INFO - Registered memory optimization hooks for TriangleAttentionStartingNode
+2025-03-09 19:06:43,323 - NaN-Handler - INFO - Registered memory optimization hooks for TriangleAttentionEndingNode
+2025-03-09 19:06:43,508 - NaN-Handler - INFO - Registered memory optimization hooks for TriangleAttentionStartingNode
+2025-03-09 19:06:43,509 - NaN-Handler - INFO - Registered memory optimization hooks for TriangleAttentionEndingNode
+2025-03-09 19:06:43,693 - NaN-Handler - INFO - Registered memory optimization hooks for TriangleAttentionStartingNode
+2025-03-09 19:06:43,694 - NaN-Handler - INFO - Registered memory optimization hooks for TriangleAttentionEndingNode
+2025-03-09 19:06:43,879 - NaN-Handler - INFO - Registered memory optimization hooks for TriangleAttentionStartingNode
+2025-03-09 19:06:43,880 - NaN-Handler - INFO - Registered memory optimization hooks for TriangleAttentionEndingNode
+2025-03-09 19:06:44,063 - NaN-Handler - INFO - Registered memory optimization hooks for TriangleAttentionStartingNode
+2025-03-09 19:06:44,065 - NaN-Handler - INFO - Registered memory optimization hooks for TriangleAttentionEndingNode
+2025-03-09 19:06:44,248 - NaN-Handler - INFO - Registered memory optimization hooks for TriangleAttentionStartingNode
+2025-03-09 19:06:44,249 - NaN-Handler - INFO - Registered memory optimization hooks for TriangleAttentionEndingNode
+2025-03-09 19:06:44,433 - NaN-Handler - INFO - Registered memory optimization hooks for TriangleAttentionStartingNode
+2025-03-09 19:06:44,434 - NaN-Handler - INFO - Registered memory optimization hooks for TriangleAttentionEndingNode
+2025-03-09 19:06:44,618 - NaN-Handler - INFO - Registered memory optimization hooks for TriangleAttentionStartingNode
+2025-03-09 19:06:44,619 - NaN-Handler - INFO - Registered memory optimization hooks for TriangleAttentionEndingNode
+terminate called after throwing an instance of 'std::bad_alloc'
+  what():  std::bad_alloc

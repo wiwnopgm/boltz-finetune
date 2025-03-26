@@ -1,0 +1,1 @@
+{"id": "8J72_C", "structure": {"id": "8J72_C", "type": "rna", "resolution": 0.0, "num_chains": 1, "num_residues": 9, "num_atoms": 9, "num_interfaces": 0}, "chains": [{"chain_id": 0, "chain_name": "C", "mol_type": 2, "msa_id": "8J72_C", "cluster_id": -1, "num_residues": 9, "valid": true}], "interfaces": [], "inference_options": null}

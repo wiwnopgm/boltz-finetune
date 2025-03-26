@@ -1,0 +1,32 @@
+# Debug configuration that avoids using ClusterSampler
+trainer:
+  devices: 1
+  max_epochs: 1
+  check_val_every_n_epoch: 1
+  log_every_n_steps: 10
+  num_sanity_val_steps: 0
+  precision: 16
+
+output: output/debug_run
+
+model:
+  dtype: bfloat16
+  use_template_embedder: False
+  
+# Use a minimal data configuration to debug
+data:
+  num_workers: 0  # Use 0 workers to make debugging easier
+  batch_size: 1
+  max_tokens: 128
+  max_atoms: 1024
+  include_ligands: False
+  
+  # Don't use datasets with complex samplers for initial debugging
+  datasets: []
+
+  # Direct way to create a dummy dataset for debugging
+  _target_: boltz.data.module.debug.DummyDataModule
+  sizes:
+    - 64    # Sequence length 
+    - 128   # MSA depth
+    - 64    # Template count

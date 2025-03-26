@@ -1,0 +1,1 @@
+{"id": "8T3E_EC", "structure": {"id": "8T3E_EC", "type": "rna", "resolution": 0.0, "num_chains": 1, "num_residues": 129, "num_atoms": 129, "num_interfaces": 0}, "chains": [{"chain_id": 0, "chain_name": "A", "mol_type": 2, "msa_id": "8T3E_EC", "cluster_id": -1, "num_residues": 129, "valid": true}], "interfaces": [], "inference_options": null}

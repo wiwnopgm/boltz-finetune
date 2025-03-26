@@ -1,0 +1,1 @@
+{"id": "5FMZ_V", "structure": {"id": "5FMZ_V", "type": "rna", "resolution": 0.0, "num_chains": 1, "num_residues": 12, "num_atoms": 12, "num_interfaces": 0}, "chains": [{"chain_id": 0, "chain_name": "V", "mol_type": 2, "msa_id": "5FMZ_V", "cluster_id": -1, "num_residues": 12, "valid": true}], "interfaces": [], "inference_options": null}

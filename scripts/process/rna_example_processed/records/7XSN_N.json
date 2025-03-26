@@ -1,0 +1,1 @@
+{"id": "7XSN_N", "structure": {"id": "7XSN_N", "type": "rna", "resolution": 0.0, "num_chains": 1, "num_residues": 387, "num_atoms": 387, "num_interfaces": 0}, "chains": [{"chain_id": 0, "chain_name": "N", "mol_type": 2, "msa_id": "7XSN_N", "cluster_id": -1, "num_residues": 387, "valid": true}], "interfaces": [], "inference_options": null}

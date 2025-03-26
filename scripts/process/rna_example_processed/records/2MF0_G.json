@@ -1,0 +1,1 @@
+{"id": "2MF0_G", "structure": {"id": "2MF0_G", "type": "rna", "resolution": 0.0, "num_chains": 1, "num_residues": 72, "num_atoms": 72, "num_interfaces": 0}, "chains": [{"chain_id": 0, "chain_name": "G", "mol_type": 2, "msa_id": "2MF0_G", "cluster_id": -1, "num_residues": 72, "valid": true}], "interfaces": [], "inference_options": null}

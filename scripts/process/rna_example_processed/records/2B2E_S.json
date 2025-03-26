@@ -1,0 +1,1 @@
+{"id": "2B2E_S", "structure": {"id": "2B2E_S", "type": "rna", "resolution": 0.0, "num_chains": 1, "num_residues": 14, "num_atoms": 14, "num_interfaces": 0}, "chains": [{"chain_id": 0, "chain_name": "S", "mol_type": 2, "msa_id": "2B2E_S", "cluster_id": -1, "num_residues": 14, "valid": true}], "interfaces": [], "inference_options": null}

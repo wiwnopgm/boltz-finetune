@@ -1,0 +1,1 @@
+{"id": "7M57_ii", "structure": {"id": "7M57_ii", "type": "rna", "resolution": 0.0, "num_chains": 1, "num_residues": 10, "num_atoms": 10, "num_interfaces": 0}, "chains": [{"chain_id": 0, "chain_name": "A", "mol_type": 2, "msa_id": "7M57_ii", "cluster_id": -1, "num_residues": 10, "valid": true}], "interfaces": [], "inference_options": null}

@@ -1,0 +1,1 @@
+{"id": "6FHI_V", "structure": {"id": "6FHI_V", "type": "rna", "resolution": 0.0, "num_chains": 1, "num_residues": 16, "num_atoms": 16, "num_interfaces": 0}, "chains": [{"chain_id": 0, "chain_name": "V", "mol_type": 2, "msa_id": "6FHI_V", "cluster_id": -1, "num_residues": 16, "valid": true}], "interfaces": [], "inference_options": null}

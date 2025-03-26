@@ -1,0 +1,1 @@
+{"id": "1TJZ_A", "structure": {"id": "1TJZ_A", "type": "rna", "resolution": 0.0, "num_chains": 1, "num_residues": 22, "num_atoms": 22, "num_interfaces": 0}, "chains": [{"chain_id": 0, "chain_name": "A", "mol_type": 2, "msa_id": "1TJZ_A", "cluster_id": -1, "num_residues": 22, "valid": true}], "interfaces": [], "inference_options": null}

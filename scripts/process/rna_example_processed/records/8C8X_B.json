@@ -1,0 +1,1 @@
+{"id": "8C8X_B", "structure": {"id": "8C8X_B", "type": "rna", "resolution": 0.0, "num_chains": 1, "num_residues": 119, "num_atoms": 119, "num_interfaces": 0}, "chains": [{"chain_id": 0, "chain_name": "B", "mol_type": 2, "msa_id": "8C8X_B", "cluster_id": -1, "num_residues": 119, "valid": true}], "interfaces": [], "inference_options": null}

@@ -1,0 +1,1 @@
+{"id": "3J8G_A", "structure": {"id": "3J8G_A", "type": "rna", "resolution": 0.0, "num_chains": 1, "num_residues": 115, "num_atoms": 115, "num_interfaces": 0}, "chains": [{"chain_id": 0, "chain_name": "A", "mol_type": 2, "msa_id": "3J8G_A", "cluster_id": -1, "num_residues": 115, "valid": true}], "interfaces": [], "inference_options": null}

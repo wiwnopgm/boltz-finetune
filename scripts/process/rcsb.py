@@ -11,6 +11,7 @@ from typing import Any, Optional
 import numpy as np
 import rdkit
 from mmcif import parse_mmcif
+from pdb import parse_pdb  # Import the new PDB parser
 from p_tqdm import p_umap
 from redis import Redis
 from tqdm import tqdm
@@ -26,12 +27,13 @@ from boltz.data.filter.static.polymer import (
 from boltz.data.types import ChainInfo, InterfaceInfo, Record, Target
 
 
-@dataclass(frozen=True, slots=True)
+@dataclass(frozen=True)
 class PDB:
-    """A raw MMCIF PDB file."""
+    """A raw PDB file."""
 
     id: str
     path: str
+    format: str  # Add format field to track whether it's a PDB or MMCIF file
 
 
 class Resource:
@@ -60,6 +62,8 @@ def fetch(datadir: Path, max_file_size: Optional[int] = None) -> list[PDB]:
     """Fetch the PDB files."""
     data = []
     excluded = 0
+    
+    # Process MMCIF files
     for file in datadir.rglob("*.cif*"):
         # The clustering file is annotated by pdb_entity id
         pdb_id = str(file.stem).lower()
@@ -70,7 +74,21 @@ def fetch(datadir: Path, max_file_size: Optional[int] = None) -> list[PDB]:
             continue
 
         # Create the target
-        target = PDB(id=pdb_id, path=str(file))
+        target = PDB(id=pdb_id, path=str(file), format="mmcif")
+        data.append(target)
+    
+    # Process PDB files
+    for file in datadir.rglob("*.pdb"):
+        # The clustering file is annotated by pdb_entity id
+        pdb_id = str(file.stem).lower()
+
+        # Check file size and skip if too large
+        if max_file_size is not None and (file.stat().st_size > max_file_size):
+            excluded += 1
+            continue
+
+        # Create the target
+        target = PDB(id=pdb_id, path=str(file), format="pdb")
         data.append(target)
 
     print(f"Excluded {excluded} files due to size.")  # noqa: T201
@@ -102,7 +120,7 @@ def finalize(outdir: Path) -> None:
     if failed_count > 0:
         print(f"Failed to parse {failed_count} entries.")  # noqa: T201
     else:
-        print("All entries parsed successfully.")  
+        print("All entries parsed successfully.")  # noqa: T201
     
     # Save manifest
     outpath = outdir / "manifest.json"
@@ -119,6 +137,8 @@ def parse(data: PDB, resource: Resource, clusters: dict) -> Target:
         The raw input data.
     resource: Resource
         The shared resource.
+    clusters: dict
+        Cluster information.
 
     Returns
     -------
@@ -129,20 +149,29 @@ def parse(data: PDB, resource: Resource, clusters: dict) -> Target:
     # Get the PDB id
     pdb_id = data.id.lower()
 
-    # Parse structure
-    parsed = parse_mmcif(data.path, resource)
+    # Parse structure based on file format
+    if data.format == "mmcif":
+        parsed = parse_mmcif(data.path, resource)
+    elif data.format == "pdb":
+        parsed = parse_pdb(data.path, resource, test_mode=True)  # Enable test mode for PDB
+    else:
+        raise ValueError(f"Unsupported file format: {data.format}")
+    
     structure = parsed.data
     structure_info = parsed.info
 
     # Create chain metadata
     chain_info = []
     for i, chain in enumerate(structure.chains):
+        print("PDB ID", pdb_id)
+        print("eChain Name", chain["name"])
         key = f"{pdb_id}_{chain['entity_id']}"
+        msa_id = f"{pdb_id}_{chain['name']}" if chain["name"] != "" else ""
         chain_info.append(
             ChainInfo(
                 chain_id=i,
                 chain_name=chain["name"],
-                msa_id="",  # FIX
+                msa_id=msa_id,  # FIX
                 mol_type=int(chain["mol_type"]),
                 cluster_id=clusters.get(key, -1),
                 num_residues=int(chain["res_num"]),
@@ -189,6 +218,10 @@ def process_structure(
         The shared resource.
     outdir : Path
         The output directory.
+    filters: list[StaticFilter]
+        Filters to apply to the structure.
+    clusters: dict
+        Cluster information.
 
     """
     # Check if we need to process
@@ -211,7 +244,7 @@ def process_structure(
                 mask = mask & filter_mask
     except Exception:  # noqa: BLE001
         traceback.print_exc()
-        print(f"Failed to parse {data.id}")
+        print(f"Failed to parse {data.id}")  # noqa: T201
         return
 
     # Replace chains and interfaces
@@ -250,110 +283,81 @@ def process(args) -> None:
     structure_dir = args.outdir / "structures"
     structure_dir.mkdir(parents=True, exist_ok=True)
 
-    # Load clusters
-    with Path(args.clusters).open("r") as f:
-        clusters: dict[str, str] = json.load(f)
-        clusters = {k.lower(): v.lower() for k, v in clusters.items()}
-
-    # Load filters
-    filters = [
-        ExcludedLigands(),
-        MinimumLengthFilter(min_len=4, max_len=5000),
-        UnknownFilter(),
-        ConsecutiveCA(max_dist=10.0),
-        ClashingChainsFilter(freq=0.3, dist=1.7),
-    ]
-
-    # Set default pickle properties
-    pickle_option = rdkit.Chem.PropertyPickleOptions.AllProps
-    rdkit.Chem.SetDefaultPickleProperties(pickle_option)
-
-    # Load shared data from redis
+    # Create a redis resource
     resource = Resource(host=args.redis_host, port=args.redis_port)
 
-    # Get data points
-    print("Fetching data...")
-    data = fetch(args.datadir)
+    # Create filters
+    filters = [
+        UnknownFilter(),
+        MinimumLengthFilter(min_len=args.min_length),
+        ConsecutiveCA(),
+        ClashingChainsFilter(),
+    ]
 
-    # Check if we can run in parallel
-    max_processes = multiprocessing.cpu_count()
-    num_processes = max(1, min(args.num_processes, max_processes, len(data)))
-    parallel = num_processes > 1
+    if args.excluded_ligands:
+        excluded_file = Path(args.excluded_ligands)
+        with excluded_file.open("r") as f:
+            excluded = json.load(f)
+        filters.append(ExcludedLigands(excluded=excluded))
 
-    # Run processing
-    print("Processing data...")
-    if parallel:
-        # Create processing function
-        fn = partial(
-            process_structure,
-            resource=resource,
-            outdir=args.outdir,
-            clusters=clusters,
-            filters=filters,
-        )
-        # Run processing in parallel
-        p_umap(fn, data, num_cpus=num_processes)
+    # Load clusters
+    clusters = {}
+    if args.cluster_file is not None:
+        with open(args.cluster_file, "r") as f:
+            cluster_data = json.load(f)["clusters"]
+        for entity_id, cluster_id in cluster_data.items():
+            clusters[entity_id] = int(cluster_id)
+
+    print("clusters", clusters)  # noqa: T201
+    # Fetch the data
+    data = fetch(args.datadir, args.max_file_size)
+    print(f"Found {len(data)} structures")  # noqa: T201
+
+    # Process the data
+    proc_func = partial(
+        process_structure,
+        resource=resource,
+        outdir=args.outdir,
+        filters=filters,
+        clusters=clusters,
+    )
+
+    if args.num_workers <= 1:
+        for i, target in enumerate(tqdm(data)):
+            proc_func(target)
+            if args.num and ((i+1) >= args.num):
+                break
     else:
-        for item in tqdm(data):
-            process_structure(
-                item,
-                resource=resource,
-                outdir=args.outdir,
-                clusters=clusters,
-                filters=filters,
-            )
+        # Process with multiple workers
+        process_args = [data]
+
+        _ = p_umap(
+            proc_func,
+            *process_args,
+            num_cpus=args.num_workers,
+            disable=False,
+        )
 
     # Finalize
     finalize(args.outdir)
 
 
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser(description="Process MSA data.")
-    parser.add_argument(
-        "--datadir",
-        type=Path,
-        required=True,
-        help="The data containing the MMCIF files.",
-    )
-    parser.add_argument(
-        "--clusters",
-        type=Path,
-        required=True,
-        help="Path to the cluster file.",
-    )
-    parser.add_argument(
-        "--outdir",
-        type=Path,
-        default="data",
-        help="The output directory.",
-    )
-    parser.add_argument(
-        "--num-processes",
-        type=int,
-        default=multiprocessing.cpu_count(),
-        help="The number of processes.",
-    )
-    parser.add_argument(
-        "--redis-host",
-        type=str,
-        default="localhost",
-        help="The Redis host.",
-    )
-    parser.add_argument(
-        "--redis-port",
-        type=int,
-        default=7777,
-        help="The Redis port.",
-    )
-    parser.add_argument(
-        "--use-assembly",
-        action="store_true",
-        help="Whether to use assembly 1.",
-    )
-    parser.add_argument(
-        "--max-file-size",
-        type=int,
-        default=None,
-    )
+    parser = argparse.ArgumentParser(description="Process PDB data")
+
+    # Input options
+    parser.add_argument("--datadir", type=Path, required=True, help="Path to data")
+    parser.add_argument("--outdir", type=Path, required=True, help="Path to output")
+    parser.add_argument("--max-file-size", type=int, help="Max file size")
+    parser.add_argument("--min-length", type=int, default=30, help="Min chain length")
+    parser.add_argument("--cluster-file", type=str, help="Path to clusters")
+    parser.add_argument("--excluded-ligands", type=str, help="Excluded ligands")
+
+    # Processing options
+    parser.add_argument("--num-workers", type=int, default=1, help="Number of workers")
+    parser.add_argument("--num", type=int, help="Number of structures to process")
+    parser.add_argument("--redis-host", type=str, default="localhost", help="Redis host")
+    parser.add_argument("--redis-port", type=int, default=6379, help="Redis port")
+
     args = parser.parse_args()
     process(args)

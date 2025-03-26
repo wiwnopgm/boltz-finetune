@@ -1,0 +1,1 @@
+{"id": "4V7E_Ae", "structure": {"id": "4V7E_Ae", "type": "rna", "resolution": 0.0, "num_chains": 1, "num_residues": 75, "num_atoms": 75, "num_interfaces": 0}, "chains": [{"chain_id": 0, "chain_name": "A", "mol_type": 2, "msa_id": "4V7E_Ae", "cluster_id": -1, "num_residues": 75, "valid": true}], "interfaces": [], "inference_options": null}

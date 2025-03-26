@@ -1,0 +1,1 @@
+{"id": "3NDB_M", "structure": {"id": "3NDB_M", "type": "rna", "resolution": 0.0, "num_chains": 1, "num_residues": 113, "num_atoms": 136, "num_interfaces": 0}, "chains": [{"chain_id": 0, "chain_name": "M", "mol_type": 2, "msa_id": "3NDB_M", "cluster_id": -1, "num_residues": 113, "valid": true}], "interfaces": [], "inference_options": null}

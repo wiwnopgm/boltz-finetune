@@ -1,0 +1,1 @@
+{"id": "2KZL_A", "structure": {"id": "2KZL_A", "type": "rna", "resolution": 0.0, "num_chains": 1, "num_residues": 55, "num_atoms": 55, "num_interfaces": 0}, "chains": [{"chain_id": 0, "chain_name": "A", "mol_type": 2, "msa_id": "2KZL_A", "cluster_id": -1, "num_residues": 55, "valid": true}], "interfaces": [], "inference_options": null}

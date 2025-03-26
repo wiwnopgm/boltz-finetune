@@ -1,0 +1,1 @@
+{"id": "3WFR_D", "structure": {"id": "3WFR_D", "type": "rna", "resolution": 0.0, "num_chains": 1, "num_residues": 75, "num_atoms": 75, "num_interfaces": 0}, "chains": [{"chain_id": 0, "chain_name": "D", "mol_type": 2, "msa_id": "3WFR_D", "cluster_id": -1, "num_residues": 75, "valid": true}], "interfaces": [], "inference_options": null}

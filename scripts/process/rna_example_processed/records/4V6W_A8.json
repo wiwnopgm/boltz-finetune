@@ -1,0 +1,1 @@
+{"id": "4V6W_A8", "structure": {"id": "4V6W_A8", "type": "rna", "resolution": 0.0, "num_chains": 1, "num_residues": 123, "num_atoms": 123, "num_interfaces": 0}, "chains": [{"chain_id": 0, "chain_name": "A", "mol_type": 2, "msa_id": "4V6W_A8", "cluster_id": -1, "num_residues": 123, "valid": true}], "interfaces": [], "inference_options": null}

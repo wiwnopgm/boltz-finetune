@@ -1,0 +1,1 @@
+{"id": "6C66_J", "structure": {"id": "6C66_J", "type": "rna", "resolution": 0.0, "num_chains": 1, "num_residues": 59, "num_atoms": 59, "num_interfaces": 0}, "chains": [{"chain_id": 0, "chain_name": "J", "mol_type": 2, "msa_id": "6C66_J", "cluster_id": -1, "num_residues": 59, "valid": true}], "interfaces": [], "inference_options": null}

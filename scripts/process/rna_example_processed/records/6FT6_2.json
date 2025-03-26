@@ -1,0 +1,1 @@
+{"id": "6FT6_2", "structure": {"id": "6FT6_2", "type": "rna", "resolution": 0.0, "num_chains": 1, "num_residues": 162, "num_atoms": 162, "num_interfaces": 0}, "chains": [{"chain_id": 0, "chain_name": "2", "mol_type": 2, "msa_id": "6FT6_2", "cluster_id": -1, "num_residues": 162, "valid": true}], "interfaces": [], "inference_options": null}

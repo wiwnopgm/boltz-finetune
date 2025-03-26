@@ -1,0 +1,1 @@
+{"id": "6RFL_U", "structure": {"id": "6RFL_U", "type": "rna", "resolution": 0.0, "num_chains": 1, "num_residues": 63, "num_atoms": 63, "num_interfaces": 0}, "chains": [{"chain_id": 0, "chain_name": "U", "mol_type": 2, "msa_id": "6RFL_U", "cluster_id": -1, "num_residues": 63, "valid": true}], "interfaces": [], "inference_options": null}

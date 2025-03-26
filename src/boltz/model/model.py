@@ -260,32 +260,88 @@ class Boltz1(LightningModule):
         run_confidence_sequentially: bool = False,
     ) -> dict[str, Tensor]:
         dict_out = {}
-
         # Compute input embeddings
         with torch.set_grad_enabled(
             self.training and self.structure_prediction_training
         ):
+            print(f"\n=== Forward pass: training={self.training}, structure_prediction_training={self.structure_prediction_training} ===")
+            
             s_inputs = self.input_embedder(feats)
+            has_nan = torch.isnan(s_inputs).any().item()
+            if has_nan:
+                nan_count = torch.isnan(s_inputs).sum().item()
+                print(f"⚠️ NaN DETECTED in s_inputs after input_embedder: {nan_count} NaN values")
+                print(f"  Shape: {s_inputs.shape}, Total elements: {s_inputs.numel()}")
+                # Try to identify which features might be causing NaNs
+                for key, value in feats.items():
+                    if isinstance(value, torch.Tensor):
+                        feat_has_nan = torch.isnan(value).any().item()
+                        if feat_has_nan:
+                            print(f"  Feature '{key}' has NaNs: {torch.isnan(value).sum().item()}")
+            else:
+                print(f"✓ s_inputs is NaN-free, shape: {s_inputs.shape}")
 
             # Initialize the sequence and pairwise embeddings
             s_init = self.s_init(s_inputs)
+            has_nan = torch.isnan(s_init).any().item()
+            if has_nan:
+                nan_count = torch.isnan(s_init).sum().item()
+                print(f"⚠️ NaN DETECTED in s_init after self.s_init: {nan_count} NaN values")
+                # Check weights of s_init
+                has_nan_weights = False
+                for name, param in self.s_init.named_parameters():
+                    if torch.isnan(param).any():
+                        print(f"  Parameter '{name}' in s_init has NaNs: {torch.isnan(param).sum().item()}")
+                        has_nan_weights = True
+                if not has_nan_weights:
+                    print(f"  All weights in s_init are NaN-free")
+            else:
+                print(f"✓ s_init is NaN-free, shape: {s_init.shape}")
+
             z_init = (
                 self.z_init_1(s_inputs)[:, :, None]
                 + self.z_init_2(s_inputs)[:, None, :]
             )
+            has_nan = torch.isnan(z_init).any().item()
+            if has_nan:
+                print(f"⚠️ NaN DETECTED in z_init: {torch.isnan(z_init).sum().item()} NaN values")
+            else:
+                print(f"✓ z_init is NaN-free, shape: {z_init.shape}")
+
             relative_position_encoding = self.rel_pos(feats)
+            has_nan = torch.isnan(relative_position_encoding).any().item()
+            if has_nan:
+                print(f"⚠️ NaN DETECTED in relative_position_encoding: {torch.isnan(relative_position_encoding).sum().item()} NaN values")
+            
             z_init = z_init + relative_position_encoding
+            has_nan = torch.isnan(z_init).any().item()
+            if has_nan:
+                print(f"⚠️ NaN DETECTED in z_init after adding relative_position_encoding: {torch.isnan(z_init).sum().item()} NaN values")
+            
             z_init = z_init + self.token_bonds(feats["token_bonds"].float())
+            has_nan = torch.isnan(z_init).any().item()
+            if has_nan:
+                print(f"⚠️ NaN DETECTED in z_init after adding token_bonds: {torch.isnan(z_init).sum().item()} NaN values")
 
             # Perform rounds of the pairwise stack
             s = torch.zeros_like(s_init)
             z = torch.zeros_like(z_init)
+            
+            print(f"Initial s and z tensors created with zeros - checking s: {torch.isnan(s).any().item()}")
 
             # Compute pairwise mask
             mask = feats["token_pad_mask"].float()
+            has_nan = torch.isnan(mask).any().item()
+            if has_nan:
+                print(f"⚠️ NaN DETECTED in mask: {torch.isnan(mask).sum().item()} NaN values")
+                
             pair_mask = mask[:, :, None] * mask[:, None, :]
+            has_nan = torch.isnan(pair_mask).any().item()
+            if has_nan:
+                print(f"⚠️ NaN DETECTED in pair_mask: {torch.isnan(pair_mask).sum().item()} NaN values")
 
             for i in range(recycling_steps + 1):
+                print(f"\n--- Recycling step {i}/{recycling_steps} ---")
                 with torch.set_grad_enabled(self.training and (i == recycling_steps)):
                     # Fixes an issue with unused parameters in autocast
                     if (
@@ -294,14 +350,103 @@ class Boltz1(LightningModule):
                         and torch.is_autocast_enabled()
                     ):
                         torch.clear_autocast_cache()
+                        print("Cleared autocast cache")
 
                     # Apply recycling
-                    s = s_init + self.s_recycle(self.s_norm(s))
-                    z = z_init + self.z_recycle(self.z_norm(z))
+                    s_norm_output = self.s_norm(s)
+                    has_nan = torch.isnan(s_norm_output).any().item()
+                    if has_nan:
+                        print(f"⚠️ NaN DETECTED in s_norm_output: {torch.isnan(s_norm_output).sum().item()} NaN values")
+                        # Check normalization layer stats
+                        if hasattr(self.s_norm, 'running_mean') and hasattr(self.s_norm, 'running_var'):
+                            print(f"  s_norm running_mean range: {self.s_norm.running_mean.min().item()} to {self.s_norm.running_mean.max().item()}")
+                            print(f"  s_norm running_var range: {self.s_norm.running_var.min().item()} to {self.s_norm.running_var.max().item()}")
+                            if torch.isnan(self.s_norm.running_var).any() or torch.isnan(self.s_norm.running_mean).any():
+                                print(f"  ⚠️ NaNs in normalization statistics!")
+                    
+                    s_recycle_output = self.s_recycle(s_norm_output)
+                    has_nan = torch.isnan(s_recycle_output).any().item()
+                    if has_nan:
+                        print(f"⚠️ NaN DETECTED in s_recycle_output: {torch.isnan(s_recycle_output).sum().item()} NaN values")
+                        # Check s_recycle weights
+                        has_nan_weights = False
+                        for name, param in self.s_recycle.named_parameters():
+                            if torch.isnan(param).any():
+                                print(f"  Parameter '{name}' in s_recycle has NaNs: {torch.isnan(param).sum().item()}")
+                                has_nan_weights = True
+                        if not has_nan_weights:
+                            print(f"  All weights in s_recycle are NaN-free")
+                    
+                    s_before = s.clone()
+                    s = s_init + s_recycle_output
+                    has_nan = torch.isnan(s).any().item()
+                    if has_nan:
+                        nan_count = torch.isnan(s).sum().item()
+                        print(f"⚠️ NaN DETECTED in s after recycling update: {nan_count} NaN values")
+                        # Check where NaNs came from
+                        if not torch.isnan(s_init).any() and not torch.isnan(s_recycle_output).any():
+                            print(f"  Strange: Both s_init and s_recycle_output are NaN-free, but their sum has NaNs")
+                            # Check for extreme values that might cause NaN when added
+                            print(f"  s_init range: {s_init.min().item()} to {s_init.max().item()}")
+                            print(f"  s_recycle_output range: {s_recycle_output.min().item()} to {s_recycle_output.max().item()}")
+                    else:
+                        print(f"✓ s is NaN-free after recycling update")
+                    
+                    z_norm_output = self.z_norm(z)
+                    z_recycle_output = self.z_recycle(z_norm_output)
+                    z = z_init + z_recycle_output
+                    has_nan = torch.isnan(z).any().item()
+                    if has_nan:
+                        print(f"⚠️ NaN DETECTED in z after recycling update: {torch.isnan(z).sum().item()} NaN values")
 
                     # Compute pairwise stack
                     if not self.no_msa:
-                        z = z + self.msa_module(z, s_inputs, feats)
+                        # Add safeguards against NaN values
+                        # Check inputs to msa_module for NaN
+                        has_nan_before = False
+                        if torch.isnan(z).any():
+                            has_nan_before = True
+                            print(f"⚠️ CAUTION: z has {torch.isnan(z).sum().item()} NaN values BEFORE msa_module call")
+                            # Optional: Try to replace NaNs with zeros
+                            # z = torch.nan_to_num(z, nan=0.0)
+                            
+                        if torch.isnan(s_inputs).any():
+                            has_nan_before = True
+                            print(f"⚠️ CAUTION: s_inputs has {torch.isnan(s_inputs).sum().item()} NaN values BEFORE msa_module call")
+                            # Optional: Try to replace NaNs with zeros
+                            # s_inputs = torch.nan_to_num(s_inputs, nan=0.0)
+
+                        # Call the MSA module with additional try-except to catch potential errors
+                        try:
+                            msa_output = self.msa_module(z, s_inputs, feats)
+                        except RuntimeError as e:
+                            print(f"⚠️ RuntimeError in msa_module: {str(e)}")
+                            if "nan" in str(e).lower() or "infinity" in str(e).lower():
+                                # If the error is related to NaNs, try to recover by skipping the MSA module
+                                print("⚠️ Bypassing msa_module due to NaN-related error")
+                                msa_output = z  # Just use the input as output to continue
+                            else:
+                                # Re-raise if it's not a NaN-related error
+                                raise
+                        
+                        has_nan = torch.isnan(msa_output).any().item()
+                        if has_nan:
+                            nan_count = torch.isnan(msa_output).sum().item()
+                            print(f"⚠️ NaN DETECTED in msa_output: {nan_count} NaN values")
+                            if not has_nan_before:
+                                print("❗ NaNs were INTRODUCED in the msa_module call")
+                            
+                            # Handle NaNs to prevent propagation - replace NaNs with zeros
+                            print("📋 Applying nan_to_num to prevent NaN propagation")
+                            msa_output = torch.nan_to_num(msa_output, nan=0.0)
+                            
+                        z = z + msa_output
+                        has_nan = torch.isnan(z).any().item()
+                        if has_nan:
+                            print(f"⚠️ NaN DETECTED in z after adding msa_output: {torch.isnan(z).sum().item()} NaN values")
+                            # Apply another NaN removal step
+                            z = torch.nan_to_num(z, nan=0.0)
+                            print("📋 Applied nan_to_num to z to prevent further NaN propagation")
 
                     # Revert to uncompiled version for validation
                     if self.is_pairformer_compiled and not self.training:
@@ -309,12 +454,39 @@ class Boltz1(LightningModule):
                     else:
                         pairformer_module = self.pairformer_module
 
+                    print(f"Running pairformer_module with s shape: {s.shape}, z shape: {z.shape}")
+                    print(f"s has NaNs before pairformer: {torch.isnan(s).any().item()}")
+                    print(f"z has NaNs before pairformer: {torch.isnan(z).any().item()}")
+                    
                     s, z = pairformer_module(s, z, mask=mask, pair_mask=pair_mask)
+                    
+                    has_nan_s = torch.isnan(s).any().item()
+                    has_nan_z = torch.isnan(z).any().item()
+                    if has_nan_s:
+                        nan_count = torch.isnan(s).sum().item()
+                        print(f"⚠️ NaN DETECTED in s after pairformer: {nan_count} NaN values")
+                        print(f"  Shape: {s.shape}, Total elements: {s.numel()}")
+                        # Get a sample of NaN locations
+                        nan_indices = torch.where(torch.isnan(s))
+                        if len(nan_indices[0]) > 0:
+                            first_idx = [idx[0].item() for idx in nan_indices]
+                            print(f"  First NaN at index: {first_idx}")
+                    else:
+                        print(f"✓ s is NaN-free after pairformer in step {i}")
+                        
+                    if has_nan_z:
+                        print(f"⚠️ NaN DETECTED in z after pairformer: {torch.isnan(z).sum().item()} NaN values")
 
             pdistogram = self.distogram_module(z)
+            has_nan = torch.isnan(pdistogram).any().item()
+            if has_nan:
+                print(f"⚠️ NaN DETECTED in pdistogram: {torch.isnan(pdistogram).sum().item()} NaN values")
+                
             dict_out = {"pdistogram": pdistogram}
+            print("=== Completed forward embedding computation ===\n")
 
         # Compute structure module
+
         if self.training and self.structure_prediction_training:
             dict_out.update(
                 self.structure_module(
@@ -614,11 +786,16 @@ class Boltz1(LightningModule):
             # Compute predicted dists
             preds = out["pdistogram"]
             pred_softmax = torch.softmax(preds, dim=-1)
-            pred_softmax = pred_softmax.argmax(dim=-1)
-            pred_softmax = torch.nn.functional.one_hot(
-                pred_softmax, num_classes=preds.shape[-1]
+
+            print("pred_softmax.shape", pred_softmax.shape)
+            print("pred_softmax.dtype", pred_softmax.dtype)
+
+            # Convert to indices first (argmax) and then to one-hot
+            pred_indices = torch.argmax(pred_softmax, dim=-1)
+            pred_one_hot = torch.nn.functional.one_hot(
+                pred_indices.long(), num_classes=preds.shape[-1]
             )
-            pred_dist = (pred_softmax * mid_points).sum(dim=-1)
+            pred_dist = (pred_one_hot * mid_points).sum(dim=-1)
             true_center = batch["disto_center"]
             true_dists = torch.cdist(true_center, true_center)
 

@@ -1,0 +1,1 @@
+{"id": "2BQ5_S", "structure": {"id": "2BQ5_S", "type": "rna", "resolution": 0.0, "num_chains": 1, "num_residues": 17, "num_atoms": 17, "num_interfaces": 0}, "chains": [{"chain_id": 0, "chain_name": "S", "mol_type": 2, "msa_id": "2BQ5_S", "cluster_id": -1, "num_residues": 17, "valid": true}], "interfaces": [], "inference_options": null}

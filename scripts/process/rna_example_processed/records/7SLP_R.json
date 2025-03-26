@@ -1,0 +1,1 @@
+{"id": "7SLP_R", "structure": {"id": "7SLP_R", "type": "rna", "resolution": 0.0, "num_chains": 1, "num_residues": 37, "num_atoms": 37, "num_interfaces": 0}, "chains": [{"chain_id": 0, "chain_name": "R", "mol_type": 2, "msa_id": "7SLP_R", "cluster_id": -1, "num_residues": 37, "valid": true}], "interfaces": [], "inference_options": null}

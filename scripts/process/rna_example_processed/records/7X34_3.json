@@ -1,0 +1,1 @@
+{"id": "7X34_3", "structure": {"id": "7X34_3", "type": "rna", "resolution": 0.0, "num_chains": 1, "num_residues": 94, "num_atoms": 94, "num_interfaces": 0}, "chains": [{"chain_id": 0, "chain_name": "3", "mol_type": 2, "msa_id": "7X34_3", "cluster_id": -1, "num_residues": 94, "valid": true}], "interfaces": [], "inference_options": null}
