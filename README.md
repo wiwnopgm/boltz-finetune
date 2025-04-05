@@ -1,6 +1,7 @@
 <div align="center">
   <div>&nbsp;</div>
   <img src="docs/boltz_title.png" width="400"/>
+</div>
 
 ## Boltz Fine-tuning
 
