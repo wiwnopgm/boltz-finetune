@@ -1,8 +1,3 @@
-<div align="center">
-  <div>&nbsp;</div>
-  <img src="docs/boltz_title.png" width="400"/>
-</div>
-
 ## Boltz Fine-tuning
 
 This repository extends the capabilities of Boltz-1, the state-of-the-art open-source model for biomolecular structure prediction. For the original Boltz-1 model and its capabilities, please refer to the [original repository](https://github.com/jwohlwend/boltz).
