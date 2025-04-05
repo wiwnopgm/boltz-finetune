@@ -222,6 +222,5 @@ scripts/examples/
 scripts/train/train_results/
 scripts/process/symmetry.pkl
 ccd.rdb
-scripts/examples/clustering/proteins.fasta
 stanford-rna/MSA/
 *.ckpt
