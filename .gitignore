@@ -216,6 +216,7 @@ merck_challenge/
 # RNA processed directories
 scripts/process/rna/rna_example_parsed/
 scripts/process/rna/rna_example_processed/
+scripts/examples/
 
 # Large files and directories
 scripts/train/train_results/
