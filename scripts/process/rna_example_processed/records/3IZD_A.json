@@ -1,1 +1,0 @@
-{"id": "3IZD_A", "structure": {"id": "3IZD_A", "type": "rna", "resolution": 0.0, "num_chains": 1, "num_residues": 138, "num_atoms": 138, "num_interfaces": 0}, "chains": [{"chain_id": 0, "chain_name": "A", "mol_type": 2, "msa_id": "3IZD_A", "cluster_id": -1, "num_residues": 138, "valid": true}], "interfaces": [], "inference_options": null}

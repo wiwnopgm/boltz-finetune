@@ -1,1 +1,0 @@
-{"id": "6K0B_U", "structure": {"id": "6K0B_U", "type": "rna", "resolution": 0.0, "num_chains": 1, "num_residues": 83, "num_atoms": 83, "num_interfaces": 0}, "chains": [{"chain_id": 0, "chain_name": "U", "mol_type": 2, "msa_id": "6K0B_U", "cluster_id": -1, "num_residues": 83, "valid": true}], "interfaces": [], "inference_options": null}

@@ -1,1 +1,0 @@
-{"id": "7S36_R", "structure": {"id": "7S36_R", "type": "rna", "resolution": 0.0, "num_chains": 1, "num_residues": 87, "num_atoms": 87, "num_interfaces": 0}, "chains": [{"chain_id": 0, "chain_name": "R", "mol_type": 2, "msa_id": "7S36_R", "cluster_id": -1, "num_residues": 87, "valid": true}], "interfaces": [], "inference_options": null}

@@ -1,1 +1,0 @@
-{"id": "2DET_C", "structure": {"id": "2DET_C", "type": "rna", "resolution": 0.0, "num_chains": 1, "num_residues": 70, "num_atoms": 70, "num_interfaces": 0}, "chains": [{"chain_id": 0, "chain_name": "C", "mol_type": 2, "msa_id": "2DET_C", "cluster_id": -1, "num_residues": 70, "valid": true}], "interfaces": [], "inference_options": null}

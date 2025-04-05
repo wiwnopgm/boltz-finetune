@@ -1,1 +1,0 @@
-{"id": "4V5G_BB", "structure": {"id": "4V5G_BB", "type": "rna", "resolution": 0.0, "num_chains": 1, "num_residues": 119, "num_atoms": 119, "num_interfaces": 0}, "chains": [{"chain_id": 0, "chain_name": "A", "mol_type": 2, "msa_id": "4V5G_BB", "cluster_id": -1, "num_residues": 119, "valid": true}], "interfaces": [], "inference_options": null}

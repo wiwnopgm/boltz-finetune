@@ -1,1 +1,0 @@
-{"id": "5GAP_U", "structure": {"id": "5GAP_U", "type": "rna", "resolution": 0.0, "num_chains": 1, "num_residues": 20, "num_atoms": 20, "num_interfaces": 0}, "chains": [{"chain_id": 0, "chain_name": "U", "mol_type": 2, "msa_id": "5GAP_U", "cluster_id": -1, "num_residues": 20, "valid": true}], "interfaces": [], "inference_options": null}

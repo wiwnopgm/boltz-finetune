@@ -1,1 +1,0 @@
-{"id": "8H6E_5A", "structure": {"id": "8H6E_5A", "type": "rna", "resolution": 0.0, "num_chains": 1, "num_residues": 114, "num_atoms": 114, "num_interfaces": 0}, "chains": [{"chain_id": 0, "chain_name": "A", "mol_type": 2, "msa_id": "8H6E_5A", "cluster_id": -1, "num_residues": 114, "valid": true}], "interfaces": [], "inference_options": null}

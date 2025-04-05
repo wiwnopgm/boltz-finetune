@@ -1,1 +1,0 @@
-{"id": "1HMH_E", "structure": {"id": "1HMH_E", "type": "rna", "resolution": 0.0, "num_chains": 1, "num_residues": 34, "num_atoms": 34, "num_interfaces": 0}, "chains": [{"chain_id": 0, "chain_name": "E", "mol_type": 2, "msa_id": "1HMH_E", "cluster_id": -1, "num_residues": 34, "valid": true}], "interfaces": [], "inference_options": null}

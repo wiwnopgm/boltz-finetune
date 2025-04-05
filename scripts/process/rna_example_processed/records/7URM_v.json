@@ -1,1 +1,0 @@
-{"id": "7URM_v", "structure": {"id": "7URM_v", "type": "rna", "resolution": 0.0, "num_chains": 1, "num_residues": 90, "num_atoms": 90, "num_interfaces": 0}, "chains": [{"chain_id": 0, "chain_name": "v", "mol_type": 2, "msa_id": "7URM_v", "cluster_id": -1, "num_residues": 90, "valid": true}], "interfaces": [], "inference_options": null}

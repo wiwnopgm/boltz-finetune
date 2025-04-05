@@ -1,1 +1,0 @@
-{"id": "3AKZ_H", "structure": {"id": "3AKZ_H", "type": "rna", "resolution": 0.0, "num_chains": 1, "num_residues": 74, "num_atoms": 74, "num_interfaces": 0}, "chains": [{"chain_id": 0, "chain_name": "H", "mol_type": 2, "msa_id": "3AKZ_H", "cluster_id": -1, "num_residues": 74, "valid": true}], "interfaces": [], "inference_options": null}

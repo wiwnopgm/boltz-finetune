@@ -1,1 +1,0 @@
-{"id": "1E7K_D", "structure": {"id": "1E7K_D", "type": "rna", "resolution": 0.0, "num_chains": 1, "num_residues": 17, "num_atoms": 17, "num_interfaces": 0}, "chains": [{"chain_id": 0, "chain_name": "D", "mol_type": 2, "msa_id": "1E7K_D", "cluster_id": -1, "num_residues": 17, "valid": true}], "interfaces": [], "inference_options": null}

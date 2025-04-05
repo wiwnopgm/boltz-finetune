@@ -1,1 +1,0 @@
-{"id": "6O3M_XV", "structure": {"id": "6O3M_XV", "type": "rna", "resolution": 0.0, "num_chains": 1, "num_residues": 77, "num_atoms": 77, "num_interfaces": 0}, "chains": [{"chain_id": 0, "chain_name": "A", "mol_type": 2, "msa_id": "6O3M_XV", "cluster_id": -1, "num_residues": 77, "valid": true}], "interfaces": [], "inference_options": null}

@@ -1,1 +1,0 @@
-{"id": "2IL9_M", "structure": {"id": "2IL9_M", "type": "rna", "resolution": 0.0, "num_chains": 1, "num_residues": 127, "num_atoms": 132, "num_interfaces": 0}, "chains": [{"chain_id": 0, "chain_name": "M", "mol_type": 2, "msa_id": "2IL9_M", "cluster_id": -1, "num_residues": 127, "valid": true}], "interfaces": [], "inference_options": null}

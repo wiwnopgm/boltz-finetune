@@ -1,1 +1,0 @@
-{"id": "4X4S_B", "structure": {"id": "4X4S_B", "type": "rna", "resolution": 0.0, "num_chains": 1, "num_residues": 35, "num_atoms": 35, "num_interfaces": 0}, "chains": [{"chain_id": 0, "chain_name": "B", "mol_type": 2, "msa_id": "4X4S_B", "cluster_id": -1, "num_residues": 35, "valid": true}], "interfaces": [], "inference_options": null}

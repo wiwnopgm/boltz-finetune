@@ -166,7 +166,7 @@ def parse(data: PDB, resource: Resource, clusters: dict) -> Target:
         print("PDB ID", pdb_id)
         print("eChain Name", chain["name"])
         key = f"{pdb_id}_{chain['entity_id']}"
-        msa_id = f"{pdb_id}_{chain['name']}" if chain["name"] != "" else ""
+        msa_id = f"{pdb_id}" if chain["name"] != "" else ""
         chain_info.append(
             ChainInfo(
                 chain_id=i,

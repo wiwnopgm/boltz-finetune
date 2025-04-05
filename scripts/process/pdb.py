@@ -80,7 +80,7 @@ class ParsedStructure:
     """A parsed structure object."""
     data: Structure
     info: StructureInfo
-    covalents: list[int]
+    covalents: List[ParsedConnection]
 
 # Import important functions from mmcif.py here for direct use
 # Define the needed functions to avoid importing from mmcif.py
@@ -233,7 +233,6 @@ def parse_pdb(
     path: str,
     components: Dict[str, Mol],
     use_assembly: bool = True,
-    test_mode: bool = False,  # Added for testing purpose
 ) -> ParsedStructure:
     """Parse a structure in PDB format.
 
@@ -245,90 +244,31 @@ def parse_pdb(
         The preprocessed PDB components dictionary.
     use_assembly: bool
         Whether to use the first assembly.
-    test_mode: bool
-        If True, don't raise errors for empty structures, useful for testing.
 
     Returns
     -------
     ParsedStructure
         The parsed structure.
-
     """
     # Disable rdkit warnings
     blocker = rdBase.BlockLogs()  # noqa: F841
 
     # Parse PDB input file
-    print(f"Reading PDB file: {path}")
     structure = gemmi.read_structure(str(path))
-    
-    # Set up entities for the structure (important for PDB format)
     structure.setup_entities()
     
-    # Print detailed entity info for debugging
-    print("\n=== ENTITY INFORMATION ===")
-    try:
-        entity_count = len(structure.entities)
-        print(f"PDB structure loaded. Contains {entity_count} entities.")
-        for i, entity in enumerate(structure.entities):
-            print(f"Entity {i}: Type={entity.entity_type.name}, Name={entity.name}, Polymer={entity.polymer_type.name if hasattr(entity, 'polymer_type') and entity.entity_type.name == 'Polymer' else 'N/A'}")
-            print(f"  Subchains: {entity.subchains}")
-            if entity.entity_type.name == "Polymer" and hasattr(entity, "full_sequence"):
-                print(f"  Sequence length: {len(entity.full_sequence)}")
-                print(f"  First 10 residues: {entity.full_sequence[:10]}")
-    except (AttributeError, TypeError) as e:
-        print(f"Warning: Could not determine entity count: {e}")
-        print(f"PDB structure loaded successfully.")
-    
-    # Print detailed model information
-    print("\n=== MODEL INFORMATION ===")
-    for model_idx, model in enumerate(structure):
-        print(f"Model {model_idx}: {len(model)} chains")
-        for chain_idx, chain in enumerate(model):
-            print(f"  Chain {chain_idx}: {chain.name}, {len(chain)} residues")
-            try:
-                polymer_residues = list(chain.get_polymer())
-                print(f"    Polymer: {len(polymer_residues)} residues")
-                if polymer_residues:
-                    print(f"    First 5 residue names: {[res.name for res in polymer_residues[:5]]}")
-                    print(f"    First 5 residue sequence numbers: {[str(res.seqid.num) for res in polymer_residues[:5]]}")
-                
-                # Count ligands and other residues
-                ligand_residues = [res for res in chain if is_ligand(res)]
-                print(f"    Ligands: {len(ligand_residues)} residues")
-                if ligand_residues:
-                    print(f"    Ligand names: {[res.name for res in ligand_residues]}")
-            except Exception as e:
-                print(f"    Error processing chain {chain.name}: {e}")
-    
-    # Print subchain information
-    print("\n=== SUBCHAIN INFORMATION ===")
-    for subchain_idx, subchain in enumerate(structure[0].subchains()):
-        subchain_id = subchain.subchain_id()
-        print(f"  Subchain {subchain_idx}: ID={subchain_id}")
-        try:
-            residue_count = len(list(subchain))
-            print(f"    Residues: {residue_count}")
-            if residue_count > 0:
-                first_residues = list(subchain)[:5]
-                print(f"    First 5 residue names: {[res.name for res in first_residues]}")
-        except Exception as e:
-            print(f"    Error processing subchain {subchain_id}: {e}")
-
-    # Extract metadata - for PDB format, this is different from MMCIF
-    # We'll have to extract this information from the HEADER and REMARK records
+    # Extract metadata
     deposit_date = ""
     release_date = ""
     revision_date = ""
     resolution = 0.0
     method = ""
 
-    # Try to extract metadata from the file itself
-    # PDB files store the deposition date in the HEADER record
+    # Try to extract metadata from the file
     for model in structure:
         for chain in model:
             for residue in chain:
                 for atom in residue:
-                    # Extract metadata from PDB REMARK records if available
                     if hasattr(atom, 'remark'):
                         if 'DEPOSITION DATE' in atom.remark:
                             deposit_date = atom.remark.split('DEPOSITION DATE')[1].strip()
@@ -351,40 +291,31 @@ def parse_pdb(
     structure.remove_alternative_conformations()
     structure.remove_empty_chains()
 
-    # Expand assembly 1 if requested
+    # Expand assembly if requested
     if use_assembly and structure.assemblies:
-        print(f"Transforming to assembly: {structure.assemblies[0].name}")
         how = gemmi.HowToNameCopiedChain.AddNumber
-        assembly_name = structure.assemblies[0].name
-        structure.transform_to_assembly(assembly_name, how=how)
+        structure.transform_to_assembly(structure.assemblies[0].name, how=how)
 
-    # Parse entities
-    # Create mapping from subchain id to entity
+    # Create entity mappings
     entities: Dict[str, gemmi.Entity] = {}
     entity_ids: Dict[str, int] = {}
+    chain_to_entity_id = {}
+    
     for entity_id, entity in enumerate(structure.entities):
-        entity: gemmi.Entity
         if entity.entity_type.name == "Water":
             continue
-        print(f"Entity {entity_id}: Type={entity.entity_type.name}, Name={entity.name}, Subchains={entity.subchains}")
+            
         for subchain_id in entity.subchains:
             entities[subchain_id] = entity
             entity_ids[subchain_id] = entity_id
-
-    # Create mapping from chain name to entity
-    chain_to_entity_id = {}
-    for entity_id, entity in enumerate(structure.entities):
-        for subchain in entity.subchains:
-            chain_name = subchain[0]  # First character is chain name
+            chain_name = subchain_id[0]  # First character is chain name
             chain_to_entity_id[chain_name] = entity_id
 
-    # Create mapping from chain, residue to subchains
-    # since a Connection uses the chains and not subchins
+    # Create subchain mapping
     subchain_map = {}
     for chain in structure[0]:
         for residue in chain:
-            seq_id = residue.seqid
-            seq_id = str(seq_id.num) + str(seq_id.icode).strip()
+            seq_id = str(residue.seqid.num) + str(residue.seqid.icode).strip()
             subchain_map[(chain.name, seq_id)] = residue.subchain
 
     # Find covalent ligands
@@ -398,20 +329,13 @@ def parse_pdb(
     chains: List[ParsedChain] = []
     chain_seqs = []
     
-    # First, process chains directly using model[0] access method
-    print(f"\n=== PROCESSING CHAINS ===")
-    print(f"Structure has {len(structure[0])} chains")
+    # Process chains directly
     for chain_id, chain in enumerate(structure[0]):
         chain_name = chain.name
-        print(f"\nProcessing chain {chain_name} ({chain_id}/{len(structure[0])})")
         
-        # Check if this chain has a polymer
         try:
             polymer_residues = list(chain.get_polymer())
             if polymer_residues:
-                print(f"Chain {chain_name} has polymer with {len(polymer_residues)} residues")
-                print(f"Residue names sample: {[res.name for res in polymer_residues[:5]]}...")
-                
                 # Find corresponding entity
                 entity = None
                 for e in structure.entities:
@@ -419,16 +343,10 @@ def parse_pdb(
                         entity = e
                         break
                 
-                print(f"Found entity for chain {chain_name}: {entity.name if entity else 'None'}")
-                print(f"Entity polymer type: {entity.polymer_type.name if entity and hasattr(entity, 'polymer_type') else 'Unknown'}")
-                
                 if entity and entity.polymer_type.name in {"PeptideL", "Dna", "Rna"}:
-                    # Get the subchain ID - should be the first character of chain name in most cases
                     subchain_id = chain_name
                     entity_name = entity.name if entity else "Unknown"
                     
-                    # Use the simplified polymer parser for PDB files
-                    print(f"Parsing polymer chain {chain_name} with {len(polymer_residues)} residues")
                     parsed_polymer = parse_polymer_simple(
                         polymer_chain=chain,
                         components=components,
@@ -439,86 +357,53 @@ def parse_pdb(
                     if parsed_polymer is not None:
                         chains.append(parsed_polymer)
                         chain_seqs.append(parsed_polymer.sequence)
-                        print(f"Added polymer chain: {chain_name}")
-                        print(f"Chain has {len(parsed_polymer.residues)} residues")
-                        print(f"Sequence (first 20): {''.join(parsed_polymer.sequence[:20])}")
-                    else:
-                        print(f"Failed to parse polymer chain {chain_name}")
-            else:
-                print(f"Chain {chain_name} has no polymer residues")
                 
-            # Also check for ligands (non-polymer residues)
+            # Check for ligands
             ligand_residues = [res for res in chain if is_ligand(res)]
             if ligand_residues:
-                print(f"Chain {chain_name} has {len(ligand_residues)} ligand residues")
-                
-                # Skip UNL or other missing ligands
                 valid_ligands = [lig for lig in ligand_residues if components.get(lig.name) is not None]
-                if not valid_ligands:
-                    print(f"No valid ligands found in chain {chain_name}")
-                    continue
-                
-                residues = []
-                for lig_idx, ligand in enumerate(valid_ligands):
-                    # Always treat as non-covalent for simplicity
-                    is_covalent = False
-                    
-                    residue = parse_ccd_residue(
-                        name=ligand.name,
-                        components=components,
-                        res_idx=lig_idx,
-                        gemmi_mol=ligand,
-                        is_covalent=is_covalent,
-                    )
-                    if residue:
-                        residues.append(residue)
-                        print(f"Added ligand: {ligand.name}")
-                
-                if residues:
-                    chains.append(
-                        ParsedChain(
-                            name=chain_name,
-                            entity="",  # No entity for ligands
-                            residues=residues,
-                            type=const.chain_type_ids["NONPOLYMER"],
-                            sequence=None
+                if valid_ligands:
+                    residues = []
+                    for lig_idx, ligand in enumerate(valid_ligands):
+                        residue = parse_ccd_residue(
+                            name=ligand.name,
+                            components=components,
+                            res_idx=lig_idx,
+                            gemmi_mol=ligand,
+                            is_covalent=False,
                         )
-                    )
-                    print(f"Added non-polymer chain: {chain_name}")
-                
-        except Exception as e:
-            print(f"Error processing chain {chain_name}: {e}")
+                        if residue:
+                            residues.append(residue)
+                    
+                    if residues:
+                        chains.append(
+                            ParsedChain(
+                                name=chain_name,
+                                entity="",
+                                residues=residues,
+                                type=const.chain_type_ids["NONPOLYMER"],
+                                sequence=None
+                            )
+                        )
+        except Exception:
             continue
     
-    # If no chains parsed from direct chain access, fall back to the subchain method
+    # Fall back to subchain method if no chains parsed
     if not chains:
-        print("No chains found using direct chain access, falling back to subchain method...")
-        print(f"Processing {len(list(structure[0].subchains()))} subchains")
         for raw_chain in structure[0].subchains():
-            # Check chain type
             subchain_id = raw_chain.subchain_id()
             
-            # Skip this chain if entity not found
             if subchain_id not in entities:
-                print(f"Warning: Entity for subchain '{subchain_id}' not found, skipping.")
                 continue
                 
             entity: gemmi.Entity = entities[subchain_id]
             entity_type = entity.entity_type.name
-            print(f"Processing subchain {subchain_id}: Type={entity_type}")
 
             # Parse a polymer
             if entity_type == "Polymer":
-                # Skip PeptideD, DnaRnaHybrid, Pna, Other
-                if entity.polymer_type.name not in {
-                    "PeptideL",
-                    "Dna",
-                    "Rna",
-                }:
-                    print(f"Skipping polymer type: {entity.polymer_type.name}")
+                if entity.polymer_type.name not in {"PeptideL", "Dna", "Rna"}:
                     continue
 
-                # Add polymer if successful
                 parsed_polymer = parse_polymer(
                     polymer=raw_chain,
                     polymer_type=entity.polymer_type,
@@ -530,27 +415,16 @@ def parse_pdb(
                 if parsed_polymer is not None:
                     chains.append(parsed_polymer)
                     chain_seqs.append(parsed_polymer.sequence)
-                    print(f"Added polymer: {subchain_id}")
-                else:
-                    print(f"Failed to parse polymer: {subchain_id}")
 
             # Parse a non-polymer
             elif entity_type in {"NonPolymer", "Branched"}:
-                # Skip UNL or other missing ligands
                 missing_ligands = [lig.name for lig in raw_chain if components.get(lig.name) is None]
                 if missing_ligands:
-                    print(f"Skipping ligands not in components: {missing_ligands}")
                     continue
 
                 residues = []
                 for lig_idx, ligand in enumerate(raw_chain):
-                    # Check if ligand is covalent
-                    if entity_type == "Branched":
-                        is_covalent = True
-                    else:
-                        is_covalent = subchain_id in covalent_chain_ids
-
-                    ligand: gemmi.Residue
+                    is_covalent = entity_type == "Branched" or subchain_id in covalent_chain_ids
                     residue = parse_ccd_residue(
                         name=ligand.name,
                         components=components,
@@ -559,7 +433,6 @@ def parse_pdb(
                         is_covalent=is_covalent,
                     )
                     residues.append(residue)
-                    print(f"Added ligand: {ligand.name}")
 
                 if residues:
                     chains.append(
@@ -571,52 +444,14 @@ def parse_pdb(
                             sequence=None
                         )
                     )
-                    print(f"Added non-polymer: {subchain_id}")
 
-    # If no chains parsed, fail or return empty structure based on test_mode
+    # If no chains parsed, fail
     if not chains:
-        msg = "No chains parsed!"
-        print(msg)
-        if test_mode:
-            # Create empty structure for testing
-            info = StructureInfo(
-                deposited=deposit_date,
-                revised=revision_date,
-                released=release_date,
-                resolution=resolution,
-                method=method,
-                num_chains=0,
-                num_interfaces=0,
-            )
-            
-            # Create empty arrays
-            atoms = np.array([], dtype=Atom)
-            bonds = np.array([], dtype=Bond)
-            residues = np.array([], dtype=Residue)
-            chains = np.array([], dtype=Chain)
-            connections = np.array([], dtype=Connection)
-            interfaces = np.array([], dtype=Interface)
-            mask = np.array([], dtype=bool)
-            
-            data = Structure(
-                atoms=atoms,
-                bonds=bonds,
-                residues=residues,
-                chains=chains,
-                connections=connections,
-                interfaces=interfaces,
-                mask=mask,
-            )
-            
-            return ParsedStructure(data=data, info=info, covalents=[])
-        else:
-            raise ValueError(msg)
+        raise ValueError("No chains parsed!")
 
     # Parse covalent connections
     connections: List[ParsedConnection] = []
     for connection in structure.connections:
-        # Skip non-covalent connections
-        connection: gemmi.Connection
         if connection.type.name != "Covale":
             continue
 
@@ -648,8 +483,7 @@ def parse_pdb(
         atom_num = sum(len(res.atoms) for res in chain.residues)
 
         # Find all copies of this chain in the assembly
-        # Use a default entity_id if not found
-        chain_name = chain.name or ""  # Handle empty chain names
+        chain_name = chain.name or ""
         entity_id = chain_to_entity_id.get(chain_name, 0)
         sym_id = sym_count.get(entity_id, 0)
         chain_data.append(
@@ -668,7 +502,7 @@ def parse_pdb(
         chain_to_idx[chain.name] = asym_id
         sym_count[entity_id] = sym_id + 1
 
-        # Add residue, atom, bond, data
+        # Add residue, atom, bond data
         for i, res in enumerate(chain.residues):
             atom_center = atom_idx + res.atom_center
             atom_disto = atom_idx + res.atom_disto
@@ -735,10 +569,10 @@ def parse_pdb(
     connections = np.array(connection_data, dtype=Connection)
     mask = np.ones(len(chain_data), dtype=bool)
 
-    # Compute interface chains (find chains with a heavy atom within 5A)
+    # Compute interface chains
     interfaces = compute_interfaces(atoms, chains)
 
-    # Return parsed structure
+    # Create structure info
     info = StructureInfo(
         deposited=deposit_date,
         revised=revision_date,
@@ -749,6 +583,7 @@ def parse_pdb(
         num_interfaces=len(interfaces),
     )
 
+    # Create structure
     data = Structure(
         atoms=atoms,
         bonds=bonds,
@@ -759,7 +594,7 @@ def parse_pdb(
         mask=mask,
     )
 
-    return ParsedStructure(data=data, info=info, covalents=[]) 
+    return ParsedStructure(data=data, info=info, covalents=connections)
 
 def parse_polymer_simple(
     polymer_chain,
@@ -789,7 +624,6 @@ def parse_polymer_simple(
         # Get polymer residues
         polymer_residues = list(polymer_chain.get_polymer())
         if not polymer_residues:
-            print(f"No polymer residues in chain {chain_id}")
             return None
             
         # Get sequence as residue names
@@ -808,14 +642,12 @@ def parse_polymer_simple(
                 # Get ref molecule
                 ref_mol = components.get(res_name)
                 if ref_mol is None:
-                    print(f"Missing component for standard residue {res_name}")
                     continue
                     
                 ref_mol = AllChem.RemoveHs(ref_mol, sanitize=False)
                 try:
                     ref_conformer = get_conformer(ref_mol)
-                except ValueError as e:
-                    print(f"Error getting conformer for {res_name}: {e}")
+                except ValueError:
                     continue
                 
                 # Get atom info
@@ -895,7 +727,6 @@ def parse_polymer_simple(
                     parsed_residues.append(residue)
         
         if not parsed_residues:
-            print(f"No residues parsed for chain {chain_id}")
             return None
             
         # Determine chain type
@@ -909,11 +740,8 @@ def parse_polymer_simple(
             sequence=sequence_1letter,
         )
     
-    except Exception as e:
-        print(f"Error parsing polymer chain {chain_id}: {e}")
-        import traceback
-        traceback.print_exc()
-        return None 
+    except Exception:
+        return None
 
 def get_one_letter_code(res_name: str) -> str:
     """Get one-letter code for an amino acid.
@@ -990,16 +818,12 @@ def prepare_rna_from_csv(
     import csv
     import tempfile
     from collections import defaultdict
-    import numpy as np
     
     # Create output directory if not provided
     if output_dir is None:
         output_dir = tempfile.mkdtemp(prefix="rna_pdb_")
     else:
         os.makedirs(output_dir, exist_ok=True)
-    
-    print(f"Processing RNA dataset from {csv_path}")
-    print(f"Output directory: {output_dir}")
     
     # Read sequence information
     rna_sequences = {}
@@ -1011,8 +835,6 @@ def prepare_rna_from_csv(
                 rna_id = row[0]
                 sequence = row[1]
                 rna_sequences[rna_id] = sequence
-    
-    print(f"Read {len(rna_sequences)} RNA sequences")
     
     # Group coordinates by RNA structure
     rna_coordinates = defaultdict(list)
@@ -1064,9 +886,6 @@ def prepare_rna_from_csv(
                 except (ValueError, IndexError):
                     skipped_entries += 1
                     continue
-    
-    print(f"Processed coordinates for {len(rna_coordinates)} RNA structures")
-    print(f"Skipped {skipped_entries} entries with missing or invalid data")
     
     # Generate PDB files for each RNA structure
     pdb_paths = {}
@@ -1130,10 +949,9 @@ def prepare_rna_from_csv(
         
         pdb_paths[rna_id] = pdb_path
     
-    print(f"Generated {len(pdb_paths)} PDB files")
     return pdb_paths
 
-def parse_stanford_rna_structure(
+def convert_csv_to_pdb(
     rna_id: str,
     components: Dict[str, Mol],
     csv_path: str = None, 
@@ -1141,7 +959,7 @@ def parse_stanford_rna_structure(
     temp_dir: str = None,
     use_assembly: bool = True,
 ) -> ParsedStructure:
-    """Parse a Stanford RNA dataset structure by ID.
+    """Convert RNA structure data from CSV format to PDB format and parse it.
     
     Parameters
     ----------
@@ -1165,7 +983,6 @@ def parse_stanford_rna_structure(
     """
     import os
     import csv
-    import numpy as np
     from collections import defaultdict
     
     # Set default paths if not provided
@@ -1179,21 +996,18 @@ def parse_stanford_rna_structure(
     
     # Check if the requested RNA ID exists
     if rna_id not in pdb_paths:
-        msg = f"RNA structure {rna_id} not found in the dataset."
-        raise ValueError(msg)
+        raise ValueError(f"RNA structure {rna_id} not found in the dataset.")
     
     try:
         # Try to parse the PDB file using the standard parser
         pdb_path = pdb_paths[rna_id]
-        parsed_structure = parse_pdb(pdb_path, components, use_assembly)
-        return parsed_structure
-    except Exception as e:
-        print(f"Standard PDB parsing failed: {e}")
-        print("Falling back to direct RNA structure creation...")
+        return parse_pdb(pdb_path, components, use_assembly)
+    except Exception:
+        # Fall back to direct RNA structure creation
         
         # Read sequence and coordinates directly from CSV files
         sequence = ""
-        coordinates = []
+        coords_by_resid = {}
         
         # Get sequence from sequences file
         with open(seq_csv_path, 'r') as f:
@@ -1205,11 +1019,9 @@ def parse_stanford_rna_structure(
                     break
         
         if not sequence:
-            msg = f"RNA sequence for {rna_id} not found."
-            raise ValueError(msg)
+            raise ValueError(f"RNA sequence for {rna_id} not found.")
         
         # Get coordinates from labels file
-        coords_by_resid = {}
         with open(csv_path, 'r') as f:
             reader = csv.reader(f)
             header = next(reader)
@@ -1243,8 +1055,7 @@ def parse_stanford_rna_structure(
                             continue
         
         if not coords_by_resid:
-            msg = f"No valid coordinates found for {rna_id}."
-            raise ValueError(msg)
+            raise ValueError(f"No valid coordinates found for {rna_id}.")
         
         # Create arrays for all structure components
         chain_id = rna_id.split("_")[-1]  # Extract chain ID (e.g., 'A' from '1SCL_A')

@@ -1,1 +1,0 @@
-{"id": "8BWT_A", "structure": {"id": "8BWT_A", "type": "rna", "resolution": 0.0, "num_chains": 1, "num_residues": 26, "num_atoms": 26, "num_interfaces": 0}, "chains": [{"chain_id": 0, "chain_name": "A", "mol_type": 2, "msa_id": "8BWT_A", "cluster_id": -1, "num_residues": 26, "valid": true}], "interfaces": [], "inference_options": null}

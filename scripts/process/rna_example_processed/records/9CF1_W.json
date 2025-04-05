@@ -1,1 +1,0 @@
-{"id": "9CF1_W", "structure": {"id": "9CF1_W", "type": "rna", "resolution": 0.0, "num_chains": 1, "num_residues": 50, "num_atoms": 50, "num_interfaces": 0}, "chains": [{"chain_id": 0, "chain_name": "W", "mol_type": 2, "msa_id": "9CF1_W", "cluster_id": -1, "num_residues": 50, "valid": true}], "interfaces": [], "inference_options": null}

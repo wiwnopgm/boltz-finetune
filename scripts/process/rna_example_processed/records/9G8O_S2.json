@@ -1,1 +1,0 @@
-{"id": "9G8O_S2", "structure": {"id": "9G8O_S2", "type": "rna", "resolution": 0.0, "num_chains": 1, "num_residues": 1706, "num_atoms": 1718, "num_interfaces": 0}, "chains": [{"chain_id": 0, "chain_name": "A", "mol_type": 2, "msa_id": "9G8O_S2", "cluster_id": -1, "num_residues": 1706, "valid": true}], "interfaces": [], "inference_options": null}

@@ -1,1 +1,0 @@
-{"id": "7ELE_G", "structure": {"id": "7ELE_G", "type": "rna", "resolution": 0.0, "num_chains": 1, "num_residues": 83, "num_atoms": 83, "num_interfaces": 0}, "chains": [{"chain_id": 0, "chain_name": "G", "mol_type": 2, "msa_id": "7ELE_G", "cluster_id": -1, "num_residues": 83, "valid": true}], "interfaces": [], "inference_options": null}

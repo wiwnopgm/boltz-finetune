@@ -1,1 +1,0 @@
-{"id": "2NR0_H", "structure": {"id": "2NR0_H", "type": "rna", "resolution": 0.0, "num_chains": 1, "num_residues": 63, "num_atoms": 63, "num_interfaces": 0}, "chains": [{"chain_id": 0, "chain_name": "H", "mol_type": 2, "msa_id": "2NR0_H", "cluster_id": -1, "num_residues": 63, "valid": true}], "interfaces": [], "inference_options": null}

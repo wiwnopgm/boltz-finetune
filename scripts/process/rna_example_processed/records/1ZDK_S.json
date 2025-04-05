@@ -1,1 +1,0 @@
-{"id": "1ZDK_S", "structure": {"id": "1ZDK_S", "type": "rna", "resolution": 0.0, "num_chains": 1, "num_residues": 19, "num_atoms": 19, "num_interfaces": 0}, "chains": [{"chain_id": 0, "chain_name": "S", "mol_type": 2, "msa_id": "1ZDK_S", "cluster_id": -1, "num_residues": 19, "valid": true}], "interfaces": [], "inference_options": null}

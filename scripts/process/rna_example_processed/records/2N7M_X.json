@@ -1,1 +1,0 @@
-{"id": "2N7M_X", "structure": {"id": "2N7M_X", "type": "rna", "resolution": 0.0, "num_chains": 1, "num_residues": 92, "num_atoms": 92, "num_interfaces": 0}, "chains": [{"chain_id": 0, "chain_name": "X", "mol_type": 2, "msa_id": "2N7M_X", "cluster_id": -1, "num_residues": 92, "valid": true}], "interfaces": [], "inference_options": null}

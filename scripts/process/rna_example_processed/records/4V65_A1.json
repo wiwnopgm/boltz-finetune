@@ -1,1 +1,0 @@
-{"id": "4V65_A1", "structure": {"id": "4V65_A1", "type": "rna", "resolution": 0.0, "num_chains": 1, "num_residues": 1530, "num_atoms": 1530, "num_interfaces": 0}, "chains": [{"chain_id": 0, "chain_name": "A", "mol_type": 2, "msa_id": "4V65_A1", "cluster_id": -1, "num_residues": 1530, "valid": true}], "interfaces": [], "inference_options": null}

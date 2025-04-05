@@ -1,1 +1,0 @@
-{"id": "7WB1_D", "structure": {"id": "7WB1_D", "type": "rna", "resolution": 0.0, "num_chains": 1, "num_residues": 121, "num_atoms": 121, "num_interfaces": 0}, "chains": [{"chain_id": 0, "chain_name": "D", "mol_type": 2, "msa_id": "7WB1_D", "cluster_id": -1, "num_residues": 121, "valid": true}], "interfaces": [], "inference_options": null}

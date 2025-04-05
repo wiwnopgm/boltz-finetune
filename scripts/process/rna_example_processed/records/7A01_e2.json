@@ -1,1 +1,0 @@
-{"id": "7A01_e2", "structure": {"id": "7A01_e2", "type": "rna", "resolution": 0.0, "num_chains": 1, "num_residues": 3825, "num_atoms": 3825, "num_interfaces": 0}, "chains": [{"chain_id": 0, "chain_name": "A", "mol_type": 2, "msa_id": "7A01_e2", "cluster_id": -1, "num_residues": 3825, "valid": true}], "interfaces": [], "inference_options": null}
