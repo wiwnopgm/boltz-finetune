@@ -1,16 +1,40 @@
-# Byte-compiled / optimized / DLL files
+# Python
 __pycache__/
 *.py[cod]
-*$py.class
-
-# C extensions
 *.so
-
-# Distribution / packaging
 .Python
 build/
-develop-eggs/
 dist/
+*.egg-info/
+
+# Large data files
+*.rdb
+*.pkl
+*.ckpt
+*.fasta
+*.a3m
+*.npz
+*.h5
+*.hdf5
+*.npy
+*.mat
+*.bin
+*.dat
+*.db
+*.sqlite
+*.sqlite3
+
+# Project specific
+scripts/process/rna/rna_example_parsed/
+scripts/process/rna/rna_example_processed/
+scripts/train/train_results/
+stanford-rna/MSA/
+anti_viral_challenge/
+database/
+merck_challenge/
+
+# Distribution / packaging
+develop-eggs/
 downloads/
 eggs/
 .eggs/
@@ -21,8 +45,6 @@ sdist/
 var/
 wheels/
 share/python-wheels/
-*.egg-info/
-.installed.cfg
 *.egg
 MANIFEST
 
@@ -158,32 +180,14 @@ cython_debug/
 *.tsv
 *.xlsx
 *.xls
-*.pkl
-*.pickle
-*.h5
-*.hdf5
 *.parquet
 *.feather
 *.arrow
-*.npy
-*.npz
-*.mat
 *.zip
 *.tar
 *.gz
 *.rar
 *.7z
-*.bin
-*.dat
-*.db
-*.sqlite
-*.sqlite3
-*.a3m
-*.pdb
-*.fasta
-*.fastq
-*.fq
-*.sam
 *.bam
 *.vcf
 *.bed
@@ -209,18 +213,13 @@ colabfold*/
 **/colabfold*/
 
 # Already added project-specific paths
-anti_viral_challenge/
-database/
 merck_challenge/
 
 # RNA processed directories
-scripts/process/rna/rna_example_parsed/
-scripts/process/rna/rna_example_processed/
 scripts/examples/
 
 # Large files and directories
-scripts/train/train_results/
 scripts/process/symmetry.pkl
 ccd.rdb
-stanford-rna/MSA/
+taxonomy.rdb
 *.ckpt
