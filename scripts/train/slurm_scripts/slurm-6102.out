@@ -1,0 +1,68 @@
+ist-gpu4080-02
+Mon Apr  7 22:32:33 2025       
++---------------------------------------------------------------------------------------+
+| NVIDIA-SMI 545.23.08              Driver Version: 545.23.08    CUDA Version: 12.3     |
+|-----------------------------------------+----------------------+----------------------+
+| GPU  Name                 Persistence-M | Bus-Id        Disp.A | Volatile Uncorr. ECC |
+| Fan  Temp   Perf          Pwr:Usage/Cap |         Memory-Usage | GPU-Util  Compute M. |
+|                                         |                      |               MIG M. |
+|=========================================+======================+======================|
+|   0  NVIDIA GeForce RTX 4080        On  | 00000000:21:00.0 Off |                  N/A |
+|  0%   46C    P8              18W / 320W |      5MiB / 16376MiB |      0%      Default |
+|                                         |                      |                  N/A |
++-----------------------------------------+----------------------+----------------------+
+                                                                                         
++---------------------------------------------------------------------------------------+
+| Processes:                                                                            |
+|  GPU   GI   CI        PID   Type   Process name                            GPU Memory |
+|        ID   ID                                                             Usage      |
+|=======================================================================================|
+|  No running processes found                                                           |
++---------------------------------------------------------------------------------------+
+Current working directory: /ist-nas/users/bunditb/boltz/scripts/train/slurm_scripts
+[INFO] Downloading model weights
+[INFO] Model weights already downloaded from the path:/ist-nas/users/bunditb/.boltz/boltz1_finetune1.ckpt
+Checking input data.
+Running predictions for 1 structure
+Processing input data.
+Generating MSA for /ist-nas/users/bunditb/boltz/examples/merck_challenge.yaml with 2 protein entities.
+Loading model from checkpoint: /ist-nas/users/bunditb/.boltz/boltz1_conf.ckpt
+Model loaded successfully!
+Predicting: |          | 0/? [00:00<?, ?it/s]Predicting:   0%|          | 0/1 [00:00<?, ?it/s]Predicting DataLoader 0:   0%|          | 0/1 [00:00<?, ?it/s]
+=== Forward pass: training=False, structure_prediction_training=False ===
+✓ s_inputs is NaN-free, shape: torch.Size([1, 308, 455])
+✓ s_init is NaN-free, shape: torch.Size([1, 308, 384])
+✓ z_init is NaN-free, shape: torch.Size([1, 308, 308, 128])
+Initial s and z tensors created with zeros - checking s: False
+
+--- Recycling step 0/3 ---
+✓ s is NaN-free after recycling update
+Running pairformer_module with s shape: torch.Size([1, 308, 384]), z shape: torch.Size([1, 308, 308, 128])
+s has NaNs before pairformer: False
+z has NaNs before pairformer: False
+✓ s is NaN-free after pairformer in step 0
+
+--- Recycling step 1/3 ---
+✓ s is NaN-free after recycling update
+Running pairformer_module with s shape: torch.Size([1, 308, 384]), z shape: torch.Size([1, 308, 308, 128])
+s has NaNs before pairformer: False
+z has NaNs before pairformer: False
+✓ s is NaN-free after pairformer in step 1
+
+--- Recycling step 2/3 ---
+✓ s is NaN-free after recycling update
+Running pairformer_module with s shape: torch.Size([1, 308, 384]), z shape: torch.Size([1, 308, 308, 128])
+s has NaNs before pairformer: False
+z has NaNs before pairformer: False
+✓ s is NaN-free after pairformer in step 2
+
+--- Recycling step 3/3 ---
+✓ s is NaN-free after recycling update
+Running pairformer_module with s shape: torch.Size([1, 308, 384]), z shape: torch.Size([1, 308, 308, 128])
+s has NaNs before pairformer: False
+z has NaNs before pairformer: False
+✓ s is NaN-free after pairformer in step 3
+=== Completed forward embedding computation ===
+
+Predicting DataLoader 0: 100%|██████████| 1/1 [01:09<00:00,  0.01it/s]Number of failed examples: 0
+Predicting DataLoader 0: 100%|██████████| 1/1 [01:09<00:00,  0.01it/s]

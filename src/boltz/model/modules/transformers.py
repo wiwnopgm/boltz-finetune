@@ -249,6 +249,7 @@ class DiffusionTransformerLayer(Module):
         return a
 
 
+# Sparse Attention
 class AtomTransformer(Module):
     """Atom Transformer"""
 
@@ -291,6 +292,7 @@ class AtomTransformer(Module):
         H = self.attn_window_keys
 
         if W is not None:
+            # N = number of atoms
             B, N, D = q.shape
             NW = N // W
 

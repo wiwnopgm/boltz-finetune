@@ -15,6 +15,7 @@ import requests
 import time
 from pathlib import Path
 from tqdm import tqdm
+import argparse
 
 def fetch_fasta(pdb_id):
     """Fetch FASTA sequence directly from RCSB PDB API."""
@@ -64,11 +65,17 @@ def process_cif_files(cif_dir, output_dir):
         time.sleep(0.5)
 
 if __name__ == "__main__":
-    # Define directories
-    cif_dir = "/ist-nas/users/bunditb/boltz/scripts/merk_challenge/FKBP_binder"
-    output_dir = "/ist-nas/users/bunditb/boltz/scripts/merk_challenge/FKBP_binder/protein_sequences/fasta_files"
+    # Set up argument parser
+    parser = argparse.ArgumentParser(description='Process CIF files to FASTA format')
+    parser.add_argument('--cif_dir', type=str, required=True,
+                      help='Directory containing CIF files')
+    parser.add_argument('--output_dir', type=str, required=True,
+                      help='Directory to save FASTA files')
+    
+    # Parse arguments
+    args = parser.parse_args()
     
     # Process CIF files
-    process_cif_files(cif_dir, output_dir)
+    process_cif_files(args.cif_dir, args.output_dir)
     
     print("Processing complete!") 

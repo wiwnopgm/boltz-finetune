@@ -1,0 +1,4 @@
+Usage: boltz predict [OPTIONS] DATA
+Try 'boltz predict --help' for help.
+
+Error: Invalid value for 'DATA': Path '/ist/users/bunditb/bunditb_bak2/boltz/examples/antiviral_ligand_yaml_files/test_datapoint_1.yaml' does not exist.
