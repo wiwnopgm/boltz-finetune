@@ -196,7 +196,6 @@ cython_debug/
 symmetry.pkl
 
 # Data directories
-data/
 datasets/
 raw_data/
 processed_data/
