@@ -56,7 +56,7 @@ def collect_a3m_files(source_dir, output_dir):
 def main():
     # Set up argument parser
     parser = argparse.ArgumentParser(description='Collect uniref.a3m files and rename them to lowercase PDB IDs.')
-    parser.add_argument('--source_dir', type=str, required=True,
+    parser.add_argument('--input_dir', type=str, required=True,
                       help='Source directory containing the PDB folders')
     parser.add_argument('--output_dir', type=str, required=True,
                       help='Output directory for collected files')
@@ -65,7 +65,7 @@ def main():
     args = parser.parse_args()
     
     # Collect the files
-    collect_a3m_files(args.source_dir, args.output_dir)
+    collect_a3m_files(args.input_dir, args.output_dir)
 
 if __name__ == '__main__':
     main() 

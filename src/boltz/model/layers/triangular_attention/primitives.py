@@ -373,9 +373,7 @@ class Attention(nn.Module):
         v = self.linear_v(kv_x)
 
         # [*, Q/K, H, C_hidden]
-        print("[DEBUG] Before view: ", "q shape: ", q.shape)
         q = q.view(q.shape[:-1] + (self.no_heads, -1))
-        print("[DEBUG] After view: ", "q shape: ", q.shape)
         k = k.view(k.shape[:-1] + (self.no_heads, -1))
         v = v.view(v.shape[:-1] + (self.no_heads, -1))
 
@@ -398,8 +396,6 @@ class Attention(nn.Module):
             o = o * g
 
         # [*, Q, H * C_hidden]
-
-        # flatten_final dim is to convert C_Hidden to C_Hidden * H
         o = flatten_final_dims(o, 2)
 
         # [*, Q, C_q]

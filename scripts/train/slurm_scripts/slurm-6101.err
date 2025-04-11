@@ -1,4 +1,0 @@
-Usage: boltz predict [OPTIONS] DATA
-Try 'boltz predict --help' for help.
-
-Error: Invalid value for '--checkpoint': Path '/ist-nas/users/bunditb/.boltz/boltz1.ckpt' does not exist.

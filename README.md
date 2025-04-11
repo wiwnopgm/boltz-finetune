@@ -1,72 +1,29 @@
-## Boltz Fine-tuning
+# Boltz Fine-tuning
 
-This repository extends the capabilities of Boltz-1, the state-of-the-art open-source model for biomolecular structure prediction. For the original Boltz-1 model and its capabilities, please refer to the [original repository](https://github.com/jwohlwend/boltz).
-
-## Extended Capabilities
-
-Our fine-tuning pipeline for protein-ligand complex prediction provides:
-- High performance [5th place](https://polarishub.io/competitions/asap-discovery/antiviral-drug-discovery-2025#competiton-results) in anti-viral ligand pose prediction challenge
-- Robust molecule processing with automatic fixing of problematic ligand structures
-- Integration with advanced docking tools for enhanced binding site prediction
-- Optimized modeling of protein-ligand interactions with improved accuracy
-
-### RNA-Specialized Boltz
-We've enhanced Boltz with dedicated RNA structure prediction capabilities through a specialized RNA MSA Module. This extension offers:
-- Improved RNA structure prediction through optimized RNA-specific MSA generation
-- Enhanced handling of RNA-specific structural features and tertiary interactions
-- Superior performance on RNA-protein and RNA-ligand complex predictions
-- Specialized processing pipeline for RNA structures in various formats
+This repository focuses on extending the capabilities of Boltz-1, the state-of-the-art open-source model for biomolecular structure prediction. For the original Boltz-1 model and its capabilities, please refer to the [original repository](https://github.com/jwohlwend/boltz).
 
 ## Installation
-Install the extended capabilities with:
 
-```
+To install the extended capabilities, run:
+
+```bash
 git clone https://github.com/wiwnopgm/boltz-finetune.git
 cd boltz-finetune
 pip install -e .
 ```
-> Note: we recommend installing in a fresh python environment
+> Note: We strongly recommend installing in a fresh Python environment to avoid dependency conflicts.
 
-## Inference
+## Extended Capabilities
 
-For RNA-specialized prediction:
+This extension to Boltz-1 include enhanced training architectures and specialized modules for RNA structure prediction. The following sections detail the key features and usage instructions.
 
-```
-boltz predict input_path --use_msa_server --rna_mode
-```
+### Fine-tuning Pipeline
 
-For optimized protein-ligand complex prediction with the fine-tuned model:
+Working with 3D molecular structures is challenging, as training data preparation for PDB structures and their Multiple Sequence Alignments (MSA) consists of multiple stages. To streamline this pre-processing step, we have created a unified pipeline that simplifies the process to just specifying paths to your PDB and MSA raw data.
 
-```
-boltz predict input_path --use_msa_server --protein_ligand
-```
+#### Dataset Preparation
 
-## Training
-
-### Full fine-tuning
-Currently, the repository supports full fine-tuning of the model. Parameter-efficient fine-tuning methods like LoRA are currently work in progress (WIP).
-
-We provide dedicated training pipelines for specialized tasks:
-
-1. **RNA Structure Prediction**
-   - Utilizes our RNA MSA Module for optimized RNA feature extraction
-   - Specialized data processing for RNA structures using `rna_process.py`
-   - Custom training configurations optimized for RNA folding
-
-2. **Protein-Ligand Complex Fine-tuning**
-   - End-to-end fine-tuning framework for protein-ligand interaction prediction
-   - Robust pre-processing with automatic molecule error fixing
-   - Integration with state-of-the-art docking tools
-   - Solution ranked 5th in anti-viral ligand pose prediction challenge
-
-For the fine-tuning instructions in details, see the explanations in the `boltz-finetune/docs/finetune.md`.
-
-## Pipeline Setup and Usage
-
-### Database Setup
-Before running the pipeline, you need to set up the required databases:
-
-1. Download and start the CCD database:
+1. Download and start the Chemical Component Dictionary (CCD) database:
 ```bash
 wget https://boltz1.s3.us-east-2.amazonaws.com/ccd.rdb
 redis-server --dbfilename ccd.rdb --port 7777
@@ -78,27 +35,49 @@ wget https://boltz1.s3.us-east-2.amazonaws.com/taxonomy.rdb
 redis-server --dbfilename taxonomy.rdb --port 7778
 ```
 
-### Running the Pipeline
-Once both database servers are running, you can execute the pipeline:
+3. Prepare your input files:
+   - PDB or mmCIF/CIF files containing 3D complex structures
+   - MSA files: pre-computed alignments can be generated using `run_mmseqs2`
+
+#### Data Processing
+
+Use our unified processing script by specifying the paths to all necessary inputs:
 
 ```bash
-cd boltz
 python scripts/process/run_pipeline.py \
   --data_dir /path/to/pdb_or_mmcif_files \
   --msa_dir  /path/to/a3m_files \
   --output_dir /path/to/output
 ```
 
-### Modular Configuration
-- Use the reference `config.yaml` to specify:
-  - Sampling parameters
-  - Modeling parameters
-  - Domain specialization mode (protein-ligand, protein-protein, or nucleotides)
+### RNA-Specific Capabilities
 
-For systematic hyperparameter optimization, you can run multiple training jobs in parallel using SLURM job arrays. Use the template script `scripts/train/slurm_scripts/parallel_run_finetune_template.sbatch` to explore different parameter combinations:
+We have enhanced the model with specialized RNA processing capabilities:
+
+- Custom MSA module with RNA-specific feature extraction
+- Advanced processing of RNA structural features and tertiary interactions
+
+### Inference
+
+The model supports multiple inference modes:
+
+```python
+# Standard inference
+boltz predict input_path --use_msa_server
+
+# Inference using LoRA fine-tuned model
+boltz predict input_path --use_msa_server --lora_weights path/to/weights
+
+# RNA structure prediction
+boltz predict input_path --use_msa_server --rna_mode
+```
+
+### Hyperparameter Optimization
+
+For systematic hyperparameter optimization, we support parallel training using SLURM job arrays. Use our template script `scripts/train/slurm_scripts/parallel_run_finetune_template.sbatch`:
 
 ```bash
-# Configure your parameter combinations
+# Configure parameter combinations
 export PARAM1_VALUES="0.3 0.5 0.7"  # e.g., train_binder_pocket_conditioned_prop
 export PARAM2_VALUES="1 2 4"        # e.g., batch_size
 export PARAM3_VALUES="0.001 0.0018 0.002"  # e.g., learning_rate
@@ -108,22 +87,30 @@ export PARAM1_PATH="data.train_binder_pocket_conditioned_prop"
 export PARAM2_PATH="data.batch_size"
 export PARAM3_PATH="model.training_args.max_lr"
 
-# Run parallel jobs
+# Launch parallel jobs in slurm cluster
 sbatch scripts/train/slurm_scripts/parallel_run_finetune_template.sbatch
 ```
 
-Each job will create a separate output directory with the parameter values in the name, allowing you to compare results across different configurations.
+Each job creates a separate output directory with parameter values in the name for easy result comparison.
 
-### Optimized Training
-The pipeline includes optimizations for faster training performance.
-- Triton's Kernel Optimization (WIP)
+### Performance Optimizations
 
-### Prediction Analysis
-*Coming soon: Detailed documentation for prediction analysis scripts*
+The pipeline includes several optimizations for enhanced training performance:
+- Triton Kernel Optimization (Work in Progress)
+- Additional optimizations coming soon
+
+### Analysis Tools
+
+*Coming soon: Comprehensive documentation for prediction analysis tools and visualization scripts*
+
+## Real-World Applications
+
+This fine-tuning pipeline has demonstrated its effectiveness in real-world applications:
+- Achieved 5th place out of 80+ submissions in the [anti-viral ligand pose challenge](https://polarishub.io/competitions/asap-discovery/antiviral-drug-discovery-2025#competiton-results)
 
 ## Citations
 
-Please cite both the original Boltz-1 paper and our extensions:
+If you use this work, please cite both the original Boltz-1 paper and our fine-tuning extensions:
 
 ```bibtex
 @article{wohlwend2024boltz1,

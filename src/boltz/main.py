@@ -77,16 +77,14 @@ def download(cache: Path) -> None:
         urllib.request.urlretrieve(CCD_URL, str(ccd))  # noqa: S310
 
     # Download model
-    print("[INFO] Downloading model weights")
-    model = cache / "boltz1_finetune1.ckpt"
+    model = cache / "boltz1_conf.ckpt"
     if not model.exists():
         click.echo(
             f"Downloading the model weights to {model}. You may "
             "change the cache directory with the --cache flag."
         )
         urllib.request.urlretrieve(MODEL_URL, str(model))  # noqa: S310
-    else:
-        print("[INFO] Model weights already downloaded from the path:{}".format(model))
+
 
 def check_inputs(
     data: Path,

@@ -218,6 +218,8 @@ merck_challenge/
 # RNA processed directories
 scripts/examples/
 
+test_results/
+
 # Large files and directories
 scripts/process/symmetry.pkl
 ccd.rdb
