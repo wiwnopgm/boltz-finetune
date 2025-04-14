@@ -302,27 +302,12 @@ class Boltz1(LightningModule):
                 self.z_init_1(s_inputs)[:, :, None]
                 + self.z_init_2(s_inputs)[:, None, :]
             )
-            has_nan = torch.isnan(z_init).any().item()
-            if has_nan:
-                print(f"⚠️ NaN DETECTED in z_init: {torch.isnan(z_init).sum().item()} NaN values")
-            else:
-                print(f"✓ z_init is NaN-free, shape: {z_init.shape}")
-
+            
             relative_position_encoding = self.rel_pos(feats)
             has_nan = torch.isnan(relative_position_encoding).any().item()
-            if has_nan:
-                print(f"⚠️ NaN DETECTED in relative_position_encoding: {torch.isnan(relative_position_encoding).sum().item()} NaN values")
             
             z_init = z_init + relative_position_encoding
-            has_nan = torch.isnan(z_init).any().item()
-            if has_nan:
-                print(f"⚠️ NaN DETECTED in z_init after adding relative_position_encoding: {torch.isnan(z_init).sum().item()} NaN values")
-            
             z_init = z_init + self.token_bonds(feats["token_bonds"].float())
-            has_nan = torch.isnan(z_init).any().item()
-            if has_nan:
-                print(f"⚠️ NaN DETECTED in z_init after adding token_bonds: {torch.isnan(z_init).sum().item()} NaN values")
-
             # Perform rounds of the pairwise stack
             s = torch.zeros_like(s_init)
             z = torch.zeros_like(z_init)
@@ -331,15 +316,7 @@ class Boltz1(LightningModule):
 
             # Compute pairwise mask
             mask = feats["token_pad_mask"].float()
-            has_nan = torch.isnan(mask).any().item()
-            if has_nan:
-                print(f"⚠️ NaN DETECTED in mask: {torch.isnan(mask).sum().item()} NaN values")
-                
             pair_mask = mask[:, :, None] * mask[:, None, :]
-            has_nan = torch.isnan(pair_mask).any().item()
-            if has_nan:
-                print(f"⚠️ NaN DETECTED in pair_mask: {torch.isnan(pair_mask).sum().item()} NaN values")
-
             for i in range(recycling_steps + 1):
                 print(f"\n--- Recycling step {i}/{recycling_steps} ---")
                 with torch.set_grad_enabled(self.training and (i == recycling_steps)):

@@ -13,6 +13,30 @@ pip install -e .
 ```
 > Note: We strongly recommend installing in a fresh Python environment to avoid dependency conflicts.
 
+## Command Line Interface
+
+This extension adds convenient command-line interface (CLI) commands for training, fine-tuning, and inference:
+
+```bash
+# Train a model
+boltz train --data_dir /path/to/structures --msa_dir /path/to/msas --output_dir ./training_output
+
+# Fine-tune a model (LoRA by default)
+boltz finetune --data_dir /path/to/structures --msa_dir /path/to/msas --model_path /path/to/model.ckpt
+
+# Run predictions
+boltz predict /path/to/input.fasta --out_dir ./results
+```
+
+For complete documentation of all CLI options, run:
+```bash
+boltz train --help
+boltz finetune --help
+boltz predict --help
+```
+
+See the detailed CLI documentation in [docs/cli.md](docs/cli.md) for more information.
+
 ## Extended Capabilities
 
 This extension to Boltz-1 include enhanced training architectures and specialized modules for RNA structure prediction. The following sections detail the key features and usage instructions.

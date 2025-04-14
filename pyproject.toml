@@ -84,3 +84,8 @@ markers = [
     "slow: marks tests as slow (deselect with '-m \"not slow\"')",
     "regression",
 ]
+
+[tool.uv.workspace]
+members = [
+    "boltz_server",
+]

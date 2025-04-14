@@ -433,6 +433,112 @@ def cli() -> None:
 @cli.command()
 @click.argument("data", type=click.Path(exists=True))
 @click.option(
+    "--msa_dir",
+    type=click.Path(exists=True),
+    help="Directory containing MSA files",
+    required=True,
+)
+@click.option(
+    "--out_dir",
+    type=click.Path(exists=False),
+    help="The path where to save the processed data.",
+    default="./boltz_processed",
+)
+@click.option(
+    "--redis_host",
+    type=str,
+    help="Redis host (default: localhost)",
+    default="localhost",
+)
+@click.option(
+    "--ccd_port",
+    type=int,
+    help="Port for CCD Redis server (default: 7777)",
+    default=7777,
+)
+@click.option(
+    "--taxonomy_port",
+    type=int,
+    help="Port for taxonomy Redis server (default: 7778)",
+    default=7778,
+)
+@click.option(
+    "--num_processes",
+    type=int,
+    help="Number of processes to use (default: 4)",
+    default=4,
+)
+@click.option(
+    "--max_seqs",
+    type=int,
+    help="Maximum number of sequences to process (default: 1000)",
+    default=1000,
+)
+def process_data(
+    data: str,
+    msa_dir: str,
+    out_dir: str = "./boltz_processed",
+    redis_host: str = "localhost",
+    ccd_port: int = 7777,
+    taxonomy_port: int = 7778,
+    num_processes: int = 4,
+    max_seqs: int = 1000,
+) -> None:
+    """Process input data for Boltz model training or fine-tuning.
+    
+    This command:
+    1. Processes CIF/PDB files from data_dir
+    2. Processes MSA files from msa_dir
+    3. Prepares the data in the format required by the model
+    4. Saves the processed data to the output directory
+    """
+    import subprocess
+    from pathlib import Path
+    
+    # Create output directories
+    data = Path(data).expanduser()
+    msa_dir = Path(msa_dir).expanduser()
+    out_dir = Path(out_dir).expanduser()
+    out_dir.mkdir(parents=True, exist_ok=True)
+    
+    # Get the absolute path to the scripts directory
+    script_dir = Path(__file__).parent.parent.parent / "scripts" / "process"
+    
+    # Create output directories
+    structures_output_dir = out_dir / "processed_structures"
+    msa_output_dir = out_dir / "processed_msa"
+    structures_output_dir.mkdir(parents=True, exist_ok=True)
+    msa_output_dir.mkdir(parents=True, exist_ok=True)
+    
+    # Process structures using CCD Redis server
+    subprocess.run(
+        ["python", str(script_dir / "rcsb.py"), 
+         "--datadir", str(data),
+         "--outdir", str(structures_output_dir),
+         "--redis-host", redis_host,
+         "--redis-port", str(ccd_port)],
+        check=True,
+    )
+    
+    # Process MSA files using taxonomy Redis server
+    subprocess.run(
+        ["python", str(script_dir / "msa.py"), 
+         "--msadir", str(msa_dir),
+         "--outdir", str(msa_output_dir),
+         "--redis-host", redis_host,
+         "--redis-port", str(taxonomy_port),
+         "--max-seqs", str(max_seqs)],
+        check=True,
+    )
+    
+    click.echo(f"Data processing completed. Processed data saved to {out_dir}")
+    click.echo(f"Processed structures saved to: {structures_output_dir}")
+    click.echo(f"Processed MSA files saved to: {msa_output_dir}")
+
+
+@cli.command()
+@click.argument("data", type=click.Path(exists=True))
+@click.option(
     "--out_dir",
     type=click.Path(exists=False),
     help="The path where to save the predictions.",
@@ -700,5 +806,388 @@ def predict(
     )
 
 
-if __name__ == "__main__":
-    cli()
+@cli.command()
+@click.option(
+    "--data_dir",
+    type=click.Path(exists=True),
+    help="Directory containing processed data",
+    required=True,
+)
+@click.option(
+    "--output_dir",
+    type=click.Path(exists=False),
+    help="Directory for model checkpoints and logs",
+    default="./boltz_checkpoints",
+)
+@click.option(
+    "--max_epochs",
+    type=int,
+    help="Maximum number of training epochs",
+    default=100,
+)
+@click.option(
+    "--learning_rate",
+    type=float,
+    help="Learning rate for training",
+    default=1e-4,
+)
+@click.option(
+    "--batch_size",
+    type=int,
+    help="Batch size for training",
+    default=32,
+)
+@click.option(
+    "--method",
+    type=click.Choice(["lora", "full"]),
+    help="Training method: 'lora' for LoRA training or 'full' for full model training",
+    default="full",
+)
+@click.option(
+    "--rank",
+    type=int,
+    help="Rank for LoRA training (only used if method='lora')",
+    default=8,
+)
+@click.option(
+    "--alpha",
+    type=float,
+    help="Alpha parameter for LoRA training (only used if method='lora')",
+    default=16.0,
+)
+def train(
+    data_dir: str,
+    output_dir: str = "./boltz_checkpoints",
+    max_epochs: int = 100,
+    learning_rate: float = 1e-4,
+    batch_size: int = 32,
+    method: str = "full",
+    rank: int = 8,
+    alpha: float = 16.0,
+) -> None:
+    """Train the Boltz model.
+    
+    This command:
+    1. Loads the processed data from data_dir
+    2. Trains the model using the specified method (full training or LoRA)
+    3. Saves checkpoints and logs to output_dir
+    """
+    from pathlib import Path
+    import torch
+    from boltz.models import BoltzModel
+    from boltz.data import BoltzDataset
+    from boltz.train import train_model
+    
+    # Create output directories
+    output_path = Path(output_dir)
+    output_path.mkdir(parents=True, exist_ok=True)
+    
+    # Load dataset
+    dataset = BoltzDataset(data_dir)
+    
+    # Initialize model
+    model = BoltzModel()
+    
+    # Configure training based on method
+    if method == "lora":
+        from boltz.lora import apply_lora
+        model = apply_lora(model, rank=rank, alpha=alpha)
+    
+    # Train model
+    train_model(
+        model=model,
+        dataset=dataset,
+        output_dir=output_path,
+        max_epochs=max_epochs,
+        learning_rate=learning_rate,
+        batch_size=batch_size,
+    )
+    
+    click.echo(f"Training completed. Model checkpoints saved to {output_path}")
+
+
+@cli.command()
+@click.option(
+    "--host",
+    type=str,
+    help="Hostname or IP address of the remote cluster",
+    required=True,
+)
+@click.option(
+    "--user",
+    type=str,
+    help="Username for SSH connection",
+    required=True,
+)
+@click.option(
+    "--identity_file",
+    type=click.Path(exists=True),
+    help="Path to SSH identity file (private key)",
+    required=True,
+)
+@click.option(
+    "--config_file",
+    type=click.Path(exists=False),
+    help="Path to save SSH config file",
+    default="~/.ssh/boltz_config",
+)
+def ssh_connect(
+    host: str,
+    user: str,
+    identity_file: str,
+    config_file: str,
+) -> None:
+    """Connect to a remote cluster via SSH.
+    
+    This command:
+    1. Creates or updates an SSH config file with the provided host information
+    2. Establishes an SSH connection to the remote cluster
+    3. Stores the host information for future use
+    """
+    import os
+    import subprocess
+    from pathlib import Path
+    
+    # Expand paths
+    identity_file = Path(identity_file).expanduser()
+    config_file = Path(config_file).expanduser()
+    
+    # Create SSH config directory if it doesn't exist
+    config_file.parent.mkdir(parents=True, exist_ok=True)
+    
+    # Create or update SSH config file
+    config_content = f"""Host {host}
+  HostName {host}
+  User {user}
+  IdentityFile {identity_file}
+"""
+    
+    # Check if config file exists and contains the host
+    if config_file.exists():
+        with open(config_file, "r") as f:
+            existing_config = f.read()
+        
+        # If host already exists, update it
+        if f"Host {host}" in existing_config:
+            lines = existing_config.split("\n")
+            new_lines = []
+            skip_lines = False
+            
+            for line in lines:
+                if line.startswith(f"Host {host}"):
+                    skip_lines = True
+                    new_lines.append(config_content.strip())
+                elif skip_lines and line.startswith("Host "):
+                    skip_lines = False
+                    new_lines.append(line)
+                elif not skip_lines:
+                    new_lines.append(line)
+            
+            if skip_lines:  # If we were skipping at the end of the file
+                new_lines.append("")
+            
+            config_content = "\n".join(new_lines)
+    
+    # Write config file
+    with open(config_file, "w") as f:
+        f.write(config_content)
+    
+    # Store host information for future use
+    cache_dir = Path.home() / ".boltz"
+    cache_dir.mkdir(parents=True, exist_ok=True)
+    
+    with open(cache_dir / "ssh_host.txt", "w") as f:
+        f.write(host)
+    
+    # Establish SSH connection
+    click.echo(f"Connecting to {host} as {user}...")
+    try:
+        subprocess.run(["ssh", "-F", str(config_file), host], check=True)
+    except subprocess.CalledProcessError:
+        click.echo("SSH connection failed. You can try connecting manually with:")
+        click.echo(f"ssh -F {config_file} {host}")
+    except KeyboardInterrupt:
+        click.echo("SSH connection terminated by user.")
+
+
+@cli.command()
+@click.option(
+    "--host",
+    type=str,
+    help="Hostname or IP address of the remote cluster (if not provided, will use the last connected host)",
+)
+@click.option(
+    "--config_file",
+    type=click.Path(exists=True),
+    help="Path to SSH config file",
+    default="~/.ssh/boltz_config",
+)
+@click.option(
+    "--database_dir",
+    type=click.Path(exists=False),
+    help="Directory containing Redis database files on the remote host",
+    default="/ist-nas/users/bunditb/boltz/scripts/database",
+)
+@click.option(
+    "--local_port_ccd",
+    type=int,
+    help="Local port to forward for CCD Redis server",
+    default=7777,
+)
+@click.option(
+    "--local_port_taxonomy",
+    type=int,
+    help="Local port to forward for taxonomy Redis server",
+    default=7778,
+)
+@click.option(
+    "--remote_port_ccd",
+    type=int,
+    help="Remote port for CCD Redis server",
+    default=7777,
+)
+@click.option(
+    "--remote_port_taxonomy",
+    type=int,
+    help="Remote port for taxonomy Redis server",
+    default=7778,
+)
+def start_redis_servers(
+    host: str = None,
+    config_file: str = "~/.ssh/boltz_config",
+    database_dir: str = "/ist-nas/users/bunditb/boltz/scripts/database",
+    local_port_ccd: int = 7777,
+    local_port_taxonomy: int = 7778,
+    remote_port_ccd: int = 7777,
+    remote_port_taxonomy: int = 7778,
+) -> None:
+    """Start Redis servers on a remote cluster and wait for connections.
+    
+    This command:
+    1. Connects to the remote cluster via SSH
+    2. Starts Redis servers for CCD and taxonomy databases
+    3. Sets up port forwarding to access the Redis servers locally
+    4. Waits for the Redis servers to accept connections
+    """
+    import os
+    import subprocess
+    import time
+    from pathlib import Path
+    
+    # Expand paths
+    config_file = Path(config_file).expanduser()
+    
+    # Get host if not provided
+    if host is None:
+        cache_dir = Path.home() / ".boltz"
+        if (cache_dir / "ssh_host.txt").exists():
+            with open(cache_dir / "ssh_host.txt", "r") as f:
+                host = f.read().strip()
+        else:
+            click.echo("Error: No host specified and no previous host found.")
+            return
+    
+    # Create a script to start Redis servers
+    redis_script = f"""#!/bin/bash
+cd {database_dir}
+redis-server --dbfilename ccd.rdb --port {remote_port_ccd} &
+redis-server --dbfilename taxonomy.rdb --port {remote_port_taxonomy} &
+echo "Redis servers started"
+"""
+    
+    # Create a temporary script file
+    script_path = Path.home() / ".boltz" / "start_redis.sh"
+    script_path.parent.mkdir(parents=True, exist_ok=True)
+    
+    with open(script_path, "w") as f:
+        f.write(redis_script)
+    
+    # Make the script executable
+    os.chmod(script_path, 0o755)
+    
+    # Start Redis servers on the remote host
+    click.echo(f"Starting Redis servers on {host}...")
+    try:
+        subprocess.run(
+            ["ssh", "-F", str(config_file), host, f"bash -s < {script_path}"],
+            check=True,
+        )
+    except subprocess.CalledProcessError as e:
+        click.echo(f"Error starting Redis servers: {e}")
+        return
+    
+    # Set up port forwarding
+    click.echo("Setting up port forwarding...")
+    try:
+        # Start port forwarding in the background
+        ccd_forward = subprocess.Popen(
+            [
+                "ssh", "-F", str(config_file), "-L", 
+                f"{local_port_ccd}:localhost:{remote_port_ccd}", 
+                "-N", host
+            ],
+        )
+        
+        taxonomy_forward = subprocess.Popen(
+            [
+                "ssh", "-F", str(config_file), "-L", 
+                f"{local_port_taxonomy}:localhost:{remote_port_taxonomy}", 
+                "-N", host
+            ],
+        )
+        
+        # Wait for Redis servers to accept connections
+        click.echo("Waiting for Redis servers to accept connections...")
+        
+        # Function to check if Redis server is accepting connections
+        def check_redis_connection(port):
+            try:
+                result = subprocess.run(
+                    ["redis-cli", "-h", "localhost", "-p", str(port), "ping"],
+                    capture_output=True,
+                    text=True,
+                    timeout=1,
+                )
+                return result.stdout.strip() == "PONG"
+            except (subprocess.SubprocessError, subprocess.TimeoutExpired):
+                return False
+        
+        # Wait for both Redis servers
+        max_attempts = 30
+        attempt = 0
+        
+        while attempt < max_attempts:
+            ccd_ready = check_redis_connection(local_port_ccd)
+            taxonomy_ready = check_redis_connection(local_port_taxonomy)
+            
+            if ccd_ready and taxonomy_ready:
+                click.echo("Both Redis servers are accepting connections!")
+                break
+            
+            attempt += 1
+            click.echo(f"Waiting for Redis servers... (attempt {attempt}/{max_attempts})")
+            time.sleep(2)
+        
+        if attempt >= max_attempts:
+            click.echo("Timeout waiting for Redis servers to accept connections.")
+            click.echo("You may need to check the Redis server logs on the remote host.")
+        
+        # Keep the port forwarding running
+        click.echo("\nRedis servers are running with port forwarding:")
+        click.echo(f"CCD Redis server: localhost:{local_port_ccd} -> {host}:{remote_port_ccd}")
+        click.echo(f"Taxonomy Redis server: localhost:{local_port_taxonomy} -> {host}:{remote_port_taxonomy}")
+        click.echo("\nPress Ctrl+C to stop the port forwarding and exit.")
+        
+        # Wait for user to press Ctrl+C
+        try:
+            while True:
+                time.sleep(1)
+        except KeyboardInterrupt:
+            click.echo("\nStopping port forwarding...")
+            ccd_forward.terminate()
+            taxonomy_forward.terminate()
+            click.echo("Port forwarding stopped.")
+    
+    except Exception as e:
+        click.echo(f"Error setting up port forwarding: {e}")
+        return
