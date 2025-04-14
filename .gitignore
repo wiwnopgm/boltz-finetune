@@ -224,3 +224,5 @@ scripts/process/symmetry.pkl
 ccd.rdb
 taxonomy.rdb
 *.ckpt
+
+.DS_Store

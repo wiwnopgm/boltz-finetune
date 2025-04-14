@@ -13,6 +13,10 @@ pip install -e .
 ```
 > Note: We strongly recommend installing in a fresh Python environment to avoid dependency conflicts.
 
+## BioAI Agent on Model Context Protocol (MCP Server)
+
+This repository features a specialized BioAI agent built on the Model Context Protocol (MCP) server for streamlining protein structure prediction workflows with Boltz-1. The MCP server provides a comprehensive infrastructure for both training and inference, enabling researchers to effectively leverage Boltz-1's capabilities without managing complex computational details. See the detailed documentation in [docs/bioai_agent.md](docs/bioai_agent.md) for more information.
+
 ## Extended Capabilities
 
 This extension to Boltz-1 include enhanced training architectures and specialized modules for RNA structure prediction. The following sections detail the key features and usage instructions.

@@ -1,0 +1,48 @@
+# Boltz-1 MCP Server Configuration
+
+# Server settings
+server:
+  name: Boltz-1 Server
+  description: MCP server for running Boltz-1 protein structure prediction
+  version: 0.1.0
+  host: 0.0.0.0
+  port: 8000
+
+# Inference settings
+inference:
+  defaults:
+    checkpoint: ~/.boltz/boltz1_conf.ckpt
+    recycling_steps: 3
+    sampling_steps: 200
+    diffusion_samples: 1
+    step_scale: 1.638
+    use_msa_server: false
+    msa_server_url: https://api.colabfold.com
+    msa_pairing_strategy: greedy
+
+# Training settings
+training:
+  default_batch_size: 1
+  default_learning_rate: 0.0018
+  default_max_epochs: 10
+  default_devices: 1
+
+# Fine-tuning settings
+fine_tuning:
+  method: lora
+  rank: 8
+  alpha: 16.0
+  dropout: 0.0
+  offload_to_cpu: false
+  batch_size: 8
+  learning_rate: 1e-3
+  weight_decay: 0.0
+  num_epochs: 5
+  warmup_steps: 0
+
+# Example data paths
+examples:
+  fasta: ./examples/example.fasta
+  yaml: ./examples/example.yaml
+  train_config: ./examples/train_config.yaml
+  fine_tune_config: ./examples/fine_tune_config.yaml 
