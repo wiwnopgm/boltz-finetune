@@ -1,17 +1,18 @@
-# BioAI Agent on Model Context Protocal (MCP Server)
+# BioAI Agent on Model Context Protocol (MCP Server)
 
-This repository contains a Streamlit application for interacting with the Boltz-1 protein structure prediction model. The application provides a user-friendly web interface for using Boltz-1 functions.
+This repository features a specialized BioAI agent built on the Model Context Protocol (MCP) server for streamlining protein structure prediction workflows with Boltz-1. The MCP server provides a comprehensive infrastructure for both training and inference, enabling researchers to effectively leverage Boltz-1's capabilities without managing complex computational details.
 
 ## Features
 
-- **Interactive Chat Interface**: Chat with an AI assistant that can help you work with Boltz-1
-- **Documentation Access**: Get information about Boltz-1 and available tools
-- **Input Preparation**: Process structure files (PDB, CIF) and sequence files (FASTA)
-- **Model Fine-tuning**: Fine-tune Boltz-1 models using LoRA or full fine-tuning
-- **Inference**: Run inference with Boltz-1 models
-- **Results Analysis**: Analyze results from Boltz-1 predictions
-- **MCP Server Integration**: Access the Boltz-1 MCP server for advanced functionality
-- **Gemini-powered BioAI Agent**: Interact with a Gemini LLM that has access to Boltz-1 tools
+- **Training Pipeline Automation**: Automate Boltz-1 model training with customizable configurations
+- **Inference Orchestration**: Streamline the process of running protein structure predictions
+- **Remote Execution Management**: Execute resource-intensive tasks on remote computing clusters
+- **Model Fine-tuning**: Support for both LoRA and full fine-tuning approaches
+- **Interactive Chat Interface**: Communicate with the BioAI agent using natural language
+- **Data Processing**: Automatically prepare and validate protein structure and sequence data
+- **Results Analysis**: Tools for analyzing and visualizing prediction outputs
+- **MCP Server Integration**: Standardized API for programmatic access to all Boltz-1 functions
+- **Gemini-powered Intelligence**: Interact with a Gemini LLM that orchestrates Boltz-1 tools
 
 ## Installation
 

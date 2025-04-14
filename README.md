@@ -13,29 +13,9 @@ pip install -e .
 ```
 > Note: We strongly recommend installing in a fresh Python environment to avoid dependency conflicts.
 
-## Command Line Interface
+## BioAI Agent on Model Context Protocol (MCP Server)
 
-This extension adds convenient command-line interface (CLI) commands for training, fine-tuning, and inference:
-
-```bash
-# Train a model
-boltz train --data_dir /path/to/structures --msa_dir /path/to/msas --output_dir ./training_output
-
-# Fine-tune a model (LoRA by default)
-boltz finetune --data_dir /path/to/structures --msa_dir /path/to/msas --model_path /path/to/model.ckpt
-
-# Run predictions
-boltz predict /path/to/input.fasta --out_dir ./results
-```
-
-For complete documentation of all CLI options, run:
-```bash
-boltz train --help
-boltz finetune --help
-boltz predict --help
-```
-
-See the detailed CLI documentation in [docs/cli.md](docs/cli.md) for more information.
+This repository features a specialized BioAI agent built on the Model Context Protocol (MCP) server for streamlining protein structure prediction workflows with Boltz-1. The MCP server provides a comprehensive infrastructure for both training and inference, enabling researchers to effectively leverage Boltz-1's capabilities without managing complex computational details. See the detailed documentation in [docs/bioai_agent.md](docs/bioai_agent.md) for more information.
 
 ## Extended Capabilities
 
