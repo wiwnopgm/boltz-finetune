@@ -1,0 +1,16 @@
+streamlit>=1.22.0
+pydantic==2.10.6
+pydantic-ai==0.0.55
+pydantic-ai-slim==0.0.55
+pydantic-graph==0.0.55
+pydantic-settings==2.8.1
+pydantic_core==2.27.2
+openai>=1.0.0
+python-dotenv>=1.0.0
+httpx>=0.24.0
+rich>=13.3.0
+torch>=2.0.0
+pyyaml>=6.0.0
+mcp-client>=0.1.0
+asyncio>=3.4.3
+google-genai
