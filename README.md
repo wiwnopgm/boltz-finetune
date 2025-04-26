@@ -15,6 +15,51 @@ pip install -e .
 
 ## BioAI Agent on Model Context Protocol (MCP Server)
 
+```
+flowchart TD
+    classDef dataBox fill:#e1f5fe,stroke:#01579b,stroke-width:2px,color:#01579b,rx:10px
+    classDef processBox fill:#f3e5f5,stroke:#4a148c,stroke-width:2px,color:#4a148c,rx:10px
+    classDef modelBox fill:#e8f5e9,stroke:#1b5e20,stroke-width:2px,color:#1b5e20,rx:10px
+    classDef resultBox fill:#fff3e0,stroke:#e65100,stroke-width:2px,color:#e65100,rx:10px
+    classDef assistantBox fill:#ffebee,stroke:#b71c1c,stroke-width:2px,color:#b71c1c,rx:15px,stroke-dasharray: 5 5
+    
+    subgraph "1️⃣ Prepare Your Data"
+        A[fa:fa-file-code Protein/RNA<br>Structure Files] --> B[fa:fa-cogs Automated<br>Processing]
+        C[fa:fa-align-left Alignment<br>Files] --> B
+        B --> D[fa:fa-database Ready-to-Use<br>Training Data]
+    end
+    
+    subgraph "2️⃣ Choose Training Approach"
+        D --> E1[fa:fa-flask Standard<br>Fine-tuning]
+        D --> E2[fa:fa-bolt Fast & Efficient<br>LoRA Fine-tuning]
+        D --> E3[fa:fa-dna RNA-specific<br>Fine-tuning]
+    end
+    
+    subgraph "3️⃣ Run & Monitor"
+        E1 --> F[fa:fa-play-circle One-Click<br>Training]
+        E2 --> F
+        E3 --> F
+        F --> G[fa:fa-brain Optimized<br>Model]
+    end
+    
+    subgraph "4️⃣ Use Your Model"
+        G --> H[fa:fa-microscope Make<br>Predictions]
+        H --> I[fa:fa-chart-line Visualize<br>Results]
+    end
+    
+    J[fa:fa-robot BioAI Assistant<br>Here to Help] -.-> A
+    J -.-> E1
+    J -.-> F
+    J -.-> H
+    
+    %% Apply styles
+    class A,C,D dataBox
+    class B,F,E1,E2,E3 processBox
+    class G modelBox
+    class H,I resultBox
+    class J assistantBox
+```
+
 This repository features a specialized BioAI agent built on the Model Context Protocol (MCP) server for streamlining protein structure prediction workflows with Boltz-1. The MCP server provides a comprehensive infrastructure for both training and inference, enabling researchers to effectively leverage Boltz-1's capabilities without managing complex computational details. See the detailed documentation in [docs/bioai_agent.md](docs/bioai_agent.md) for more information.
 
 ## Extended Capabilities
