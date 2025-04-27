@@ -68,6 +68,9 @@ def he_normal_init_(weights):
 def glorot_uniform_init_(weights):
     torch.nn.init.xavier_uniform_(weights, gain=1)
 
+def glorot_uniform_init_(wegihts):
+    torch.nn.init.xavier_uniform_(weights, gain=1)
+
 
 def final_init_(weights):
     with torch.no_grad():

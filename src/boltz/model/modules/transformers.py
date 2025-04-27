@@ -166,9 +166,9 @@ class DiffusionTransformer(Module):
                     model_cache[prefix_cache] = {}
                 layer_cache = model_cache[prefix_cache]
             a = layer(
-                a,
-                s,
-                z,
+                a, # q
+                s, # c
+                z, # p
                 mask=mask,
                 to_keys=to_keys,
                 multiplicity=multiplicity,
@@ -294,10 +294,11 @@ class AtomTransformer(Module):
             B, N, D = q.shape
             NW = N // W
 
-            # reshape tokens
+            # reshape tokens: B * (num_res_per_window)
             q = q.view((B * NW, W, -1))
             c = c.view((B * NW, W, -1))
             if mask is not None:
+                # mask is B * (N // W)
                 mask = mask.view(B * NW, W)
             p = p.view((p.shape[0] * NW, W, H, -1))
 
@@ -318,5 +319,6 @@ class AtomTransformer(Module):
 
         if W is not None:
             q = q.view((B, NW * W, D))
+            # transform q back to B, N, D
 
         return q

@@ -793,12 +793,23 @@ def parse_boltz_schema(  # noqa: C901, PLR0915, PLR0912
         if entity_type in {"protein", "dna", "rna"}:
             seq = str(item[entity_type]["sequence"])
         elif entity_type == "ligand":
-            assert "smiles" in item[entity_type] or "ccd" in item[entity_type]
-            assert "smiles" not in item[entity_type] or "ccd" not in item[entity_type]
+            assert any(key in item[entity_type] for key in ["smiles", "ccd", "cif_path", "pdb_path", "sdf_path", "mol2_path"]), \
+                "Ligand must have smiles, ccd, cif_path, pdb_path, sdf_path, or mol2_path"
+            # Make sure only one type is specified
+            assert sum(key in item[entity_type] for key in ["smiles", "ccd", "cif_path", "pdb_path", "sdf_path", "mol2_path"]) == 1, \
+                "Ligand must have exactly one of: smiles, ccd, cif_path, pdb_path, sdf_path, or mol2_path"
             if "smiles" in item[entity_type]:
                 seq = str(item[entity_type]["smiles"])
-            else:
+            elif "ccd" in item[entity_type]:
                 seq = str(item[entity_type]["ccd"])
+            elif "cif_path" in item[entity_type]:
+                seq = str(item[entity_type]["cif_path"])
+            elif "pdb_path" in item[entity_type]:
+                seq = str(item[entity_type]["pdb_path"])
+            elif "sdf_path" in item[entity_type]:
+                seq = str(item[entity_type]["sdf_path"])
+            else:
+                seq = str(item[entity_type]["mol2_path"])
         items_to_group.setdefault((entity_type, seq), []).append(item)
 
     # Go through entities and parse them

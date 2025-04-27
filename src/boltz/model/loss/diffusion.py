@@ -65,6 +65,8 @@ def weighted_rigid_align(
     )
     V = V.mH
 
+    # V.mH
+
     # Catch ambiguous rotation by checking the magnitude of singular values
     if (S.abs() <= 1e-15).any() and not (num_points < (dim + 1)):
         print(
@@ -74,12 +76,14 @@ def weighted_rigid_align(
         )
 
     # Compute the rotation matrix
+    # UV^T
     rot_matrix = torch.einsum("b i j, b k j -> b i k", U, V).to(dtype=torch.float32)
 
     # Ensure proper rotation matrix with determinant 1
     F = torch.eye(dim, dtype=cov_matrix_32.dtype, device=cov_matrix.device)[
         None
     ].repeat(batch_size, 1, 1)
+
     F[:, -1, -1] = torch.det(rot_matrix)
     rot_matrix = einsum(U, F, V, "b i j, b j k, b l k -> b i l")
     rot_matrix = rot_matrix.to(dtype=original_dtype)

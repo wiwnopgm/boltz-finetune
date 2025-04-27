@@ -86,6 +86,7 @@ def compute_frames_nonpolymer(
             * resolved_mask[mask_chain_atom][:, None]
         ).astype(np.float32)
         resolved_pair[resolved_pair == 1] = math.inf
+        # sorting 
         indices = np.argsort(dist_mat + resolved_pair, axis=1)
         frames = (
             np.concatenate(
@@ -717,6 +718,7 @@ def process_atom_features(
             chain_res_ids[(chain_idx, res_id)] = new_idx
         else:
             new_idx = chain_res_ids[(chain_idx, res_id)]
+            # new_idx = chain_res_ids[(chain_idx, res_id)]
 
         # Map atoms to token indices
         ref_space_uid.extend([new_idx] * token["atom_num"])
@@ -727,7 +729,7 @@ def process_atom_features(
         end = token["atom_idx"] + token["atom_num"]
         token_atoms = data.structure.atoms[start:end]
 
-        # Map token to representative atom
+        # Map token to representative atom (in reisdue: disto_idx and non-polymer using center_idx)
         token_to_rep_atom.append(atom_idx + token["disto_idx"] - start)
         if (chain["mol_type"] != const.chain_type_ids["NONPOLYMER"]) and token[
             "resolved_mask"
@@ -747,6 +749,7 @@ def process_atom_features(
         elif (token["mol_type"] == const.chain_type_ids["PROTEIN"]) and (
             res_type in const.ref_atoms
         ):
+            # idx_frame represents N, alpha-carbon, and carbon
             idx_frame_a, idx_frame_b, idx_frame_c = (
                 const.ref_atoms[res_type].index("N"),
                 const.ref_atoms[res_type].index("CA"),
@@ -790,12 +793,15 @@ def process_atom_features(
         atom_data.append(token_atoms)
         atom_idx += len(token_atoms)
 
+    # Why cpu here?
     disto_coords = np.array(disto_coords)
 
     # Compute distogram
     t_center = torch.Tensor(disto_coords)
+    # torch cdist => B,P,M x B,R,M => B,P,R
     t_dists = torch.cdist(t_center, t_center)
     boundaries = torch.linspace(min_dist, max_dist, num_bins - 1)
+    # B,N,N,1 compared to boundaries (num_bims,1)
     distogram = (t_dists.unsqueeze(-1) > boundaries).sum(dim=-1).long()
     disto_target = one_hot(distogram, num_classes=num_bins)
 
@@ -824,7 +830,9 @@ def process_atom_features(
         atom_to_token,
         frame_data,
         resolved_frame_data,
-    )  # Compute frames for NONPOLYMER tokens
+    )  
+    
+    # Compute frames for NONPOLYMER tokens
     frames = from_numpy(frame_data.copy())
     frame_resolved_mask = from_numpy(resolved_frame_data.copy())
     # Convert to one-hot

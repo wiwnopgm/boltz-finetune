@@ -265,6 +265,7 @@ def get_indexing_matrix(K, W, H, device):
     assert W % 2 == 0
     assert H % (W // 2) == 0
 
+    # h = H // (W // 2)
     h = H // (W // 2)
     assert h % 2 == 0
 
@@ -281,6 +282,7 @@ def single_to_keys(single, indexing_matrix, W, H):
     B, N, D = single.shape
     K = N // W
     single = single.view(B, 2 * K, W // 2, D)
+    # (B, 2K, H, D) + (2K, hK) -> B, K, H, D
     return torch.einsum("b j i d, j k -> b k i d", single, indexing_matrix).reshape(
         B, K, H, D
     )
@@ -377,6 +379,8 @@ class AtomAttentionEncoder(Module):
         )
         init.final_init_(self.p_mlp[5].weight)
 
+        # AtomTransformer here
+
         self.atom_encoder = AtomTransformer(
             dim=atom_s,
             dim_single_cond=atom_s,
@@ -402,6 +406,7 @@ class AtomAttentionEncoder(Module):
         multiplicity=1,
         model_cache=None,
     ):
+        # ref_pos
         B, N, _ = feats["ref_pos"].shape
         atom_mask = feats["atom_pad_mask"].bool()
 
@@ -463,9 +468,12 @@ class AtomAttentionEncoder(Module):
                 .float()
                 .unsqueeze(-1)
             )
-
+            
+            # [B, K, H, 1, 1]
             p = self.embed_atompair_ref_pos(d) * v
             p = p + self.embed_atompair_ref_dist(d_norm) * v
+
+            # [B, K, H, 1, 1]
             p = p + self.embed_atompair_mask(v) * v
 
             q = c

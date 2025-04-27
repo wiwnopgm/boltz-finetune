@@ -121,7 +121,6 @@ def load_input(record: Record, target_dir: Path, msa_dir: Path) -> Input:
 
     return Input(structure, msas)
 
-
 def collate(data: list[dict[str, Tensor]]) -> dict[str, Tensor]:
     """Collate the data.
 
@@ -154,7 +153,6 @@ def collate(data: list[dict[str, Tensor]]) -> dict[str, Tensor]:
         ]:
             # Check if all have the same shape
             shape = values[0].shape
-            # padding to same shape in the batch
             if not all(v.shape == shape for v in values):
                 values, _ = pad_to_max(values, 0)
             else:
