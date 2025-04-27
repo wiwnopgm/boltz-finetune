@@ -9,7 +9,6 @@ from pathlib import Path
 from typing import Any, Optional
 
 import numpy as np
-import rdkit
 from mmcif import parse_mmcif
 from pdb import parse_pdb  # Import the new PDB parser
 from p_tqdm import p_umap
@@ -137,8 +136,6 @@ def parse(data: PDB, resource: Resource, clusters: dict) -> Target:
         The raw input data.
     resource: Resource
         The shared resource.
-    clusters: dict
-        Cluster information.
 
     Returns
     -------
@@ -343,21 +340,52 @@ def process(args) -> None:
 
 
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser(description="Process PDB data")
-
-    # Input options
-    parser.add_argument("--datadir", type=Path, required=True, help="Path to data")
-    parser.add_argument("--outdir", type=Path, required=True, help="Path to output")
-    parser.add_argument("--max-file-size", type=int, help="Max file size")
-    parser.add_argument("--min-length", type=int, default=30, help="Min chain length")
-    parser.add_argument("--cluster-file", type=str, help="Path to clusters")
-    parser.add_argument("--excluded-ligands", type=str, help="Excluded ligands")
-
-    # Processing options
-    parser.add_argument("--num-workers", type=int, default=1, help="Number of workers")
-    parser.add_argument("--num", type=int, help="Number of structures to process")
-    parser.add_argument("--redis-host", type=str, default="localhost", help="Redis host")
-    parser.add_argument("--redis-port", type=int, default=6379, help="Redis port")
-
+    parser = argparse.ArgumentParser(description="Process MSA data.")
+    parser.add_argument(
+        "--datadir",
+        type=Path,
+        required=True,
+        help="The data containing the MMCIF files.",
+    )
+    parser.add_argument(
+        "--clusters",
+        type=Path,
+        required=True,
+        help="Path to the cluster file.",
+    )
+    parser.add_argument(
+        "--outdir",
+        type=Path,
+        default="data",
+        help="The output directory.",
+    )
+    parser.add_argument(
+        "--num-processes",
+        type=int,
+        default=multiprocessing.cpu_count(),
+        help="The number of processes.",
+    )
+    parser.add_argument(
+        "--redis-host",
+        type=str,
+        default="localhost",
+        help="The Redis host.",
+    )
+    parser.add_argument(
+        "--redis-port",
+        type=int,
+        default=7777,
+        help="The Redis port.",
+    )
+    parser.add_argument(
+        "--use-assembly",
+        action="store_true",
+        help="Whether to use assembly 1.",
+    )
+    parser.add_argument(
+        "--max-file-size",
+        type=int,
+        default=None,
+    )
     args = parser.parse_args()
     process(args)
