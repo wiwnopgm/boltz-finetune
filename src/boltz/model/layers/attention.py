@@ -77,7 +77,7 @@ class AttentionPairBias(nn.Module):
         z : torch.Tensor
             The input pairwise tensor (B, N, N, D)
         mask : torch.Tensor
-            The pairwise mask tensor (B, N)
+            The mask tensor (B, N)
         multiplicity : int, optional
             The diffusion batch size, by default 1
 
@@ -98,11 +98,11 @@ class AttentionPairBias(nn.Module):
             mask = to_keys(mask.unsqueeze(-1)).squeeze(-1)
         else:
             k_in = s
-
+        
         # Compute projections
         q = self.proj_q(s).view(B, -1, self.num_heads, self.head_dim)
         k = self.proj_k(k_in).view(B, -1, self.num_heads, self.head_dim)
-        v = self.proj_v(k_in).view(B, -1, self.num_heads, self.head_dim)
+        v = self.proj_v(k_in).view(B, -1, self.num_heads, self.head_dim) # (B, N)
 
         # Caching z projection during diffusion roll-out
         if model_cache is None or "z" not in model_cache:
@@ -112,20 +112,26 @@ class AttentionPairBias(nn.Module):
                 model_cache["z"] = z
         else:
             z = model_cache["z"]
+        # (B * multiplicity, N, N, D)
         z = z.repeat_interleave(multiplicity, 0)
 
         g = self.proj_g(s).sigmoid()
 
+        # Autocast on transformer
         with torch.autocast("cuda", enabled=False):
             # Compute attention weights
+            # similar to the scaled dot product attention
+
             attn = torch.einsum("bihd,bjhd->bhij", q.float(), k.float())
-            attn = attn / (self.head_dim**0.5) + z.float()
-            # The pairwise mask tensor (B, N) is broadcasted to (B, 1, 1, N) and (B, H, N, N)
+            # (B, num_head, N, N)
+            attn = attn / (self.head_dim**0.5) + z.float() # (B, H,  N, N)
             attn = attn + (1 - mask[:, None, None].float()) * -self.inf
             attn = attn.softmax(dim=-1)
 
             # Compute output
             o = torch.einsum("bhij,bjhd->bihd", attn, v.float()).to(v.dtype)
+        
+        # (B, N, D)
         o = o.reshape(B, -1, self.c_s)
         o = self.proj_o(g * o)
 

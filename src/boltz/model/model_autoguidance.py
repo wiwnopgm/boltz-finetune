@@ -1,13 +1,17 @@
 import gc
 import random
-from typing import Any, Optional
-from typing import Any, Optional
+import time
+from typing import Any, Dict, Optional, List, Union
+import math
 
+from boltz.model import model
 import torch
 import torch._dynamo
+import torch.nn.functional as F
 from pytorch_lightning import LightningModule
 from torch import Tensor, nn
 from torchmetrics import MeanMetric
+from torch.profiler import profile, record_function, ProfilerActivity
 
 import boltz.model.layers.initialize as init
 from boltz.data import const
@@ -38,9 +42,9 @@ from boltz.model.modules.utils import ExponentialMovingAverage
 from boltz.model.optim.scheduler import AlphaFoldLRScheduler
 
 
-class Boltz1(LightningModule):
-    """Boltz1 model."""
+torch.set_float32_matmul_precision('high')
 
+class Boltz1(LightningModule):
     def __init__(  # noqa: PLR0915, C901, PLR0912
         self,
         atom_s: int,
@@ -57,7 +61,6 @@ class Boltz1(LightningModule):
         diffusion_process_args: dict[str, Any],
         diffusion_loss_args: dict[str, Any],
         confidence_model_args: dict[str, Any],
-        steering_args: dict[str, Any],
         atom_feature_dim: int = 128,
         confidence_prediction: bool = False,
         confidence_imitate_trunk: bool = False,
@@ -139,7 +142,6 @@ class Boltz1(LightningModule):
         self.validation_args = validation_args
         self.diffusion_loss_args = diffusion_loss_args
         self.predict_args = predict_args
-        self.steering_args = steering_args
 
         self.nucleotide_rmsd_weight = nucleotide_rmsd_weight
         self.ligand_rmsd_weight = ligand_rmsd_weight
@@ -148,6 +150,26 @@ class Boltz1(LightningModule):
         self.min_dist = min_dist
         self.max_dist = max_dist
         self.is_pairformer_compiled = False
+
+        # Initialize profiler configuration with defaults
+        self.profiler_config = {
+            'enabled': False,
+            'structure_module': True,
+            'diffusion_sampling': True, 
+            'confidence_module': True,
+            'record_shapes': True,
+            'profile_memory': True,
+            'with_stack': True,
+            'with_flops': True,
+            'row_limit': 10,
+            'export_chrome_trace': False
+        }
+        
+        # Update profiler config from finetune_config if provided
+        if finetune_config and 'profiler' in finetune_config:
+            profiler_cfg = finetune_config['profiler']
+            if isinstance(profiler_cfg, dict):
+                self.profiler_config.update(profiler_cfg)
 
         # Input projections
         s_input_dim = (
@@ -204,11 +226,7 @@ class Boltz1(LightningModule):
             )
 
         # Output modules
-        use_accumulate_token_repr = (
-            confidence_prediction
-            and "use_s_diffusion" in confidence_model_args
-            and confidence_model_args["use_s_diffusion"]
-        )
+        use_accumulate_token_repr = confidence_prediction and "use_s_diffusion" in confidence_model_args and confidence_model_args["use_s_diffusion"]
         self.structure_module = AtomDiffusion(
             score_model_args={
                 "token_z": token_z,
@@ -260,6 +278,12 @@ class Boltz1(LightningModule):
                 if name.split(".")[0] != "confidence_module":
                     param.requires_grad = False
 
+        # Store finetuning configuration
+        self.finetune_config = finetune_config or {}
+
+        # Track whether LoRA has been applied
+        self._lora_applied = False
+
     def forward(
         self,
         feats: dict[str, Tensor],
@@ -268,9 +292,11 @@ class Boltz1(LightningModule):
         multiplicity_diffusion_train: int = 1,
         diffusion_samples: int = 1,
         run_confidence_sequentially: bool = False,
+        autoguidance_ratio: float = 0.0,
+        guidance_weight: float = 1.0,
     ) -> dict[str, Tensor]:
+        start_time = time.time()
         dict_out = {}
-
 
         # Compute input embeddings
         with torch.set_grad_enabled(
@@ -288,7 +314,6 @@ class Boltz1(LightningModule):
             z_init = z_init + relative_position_encoding
             z_init = z_init + self.token_bonds(feats["token_bonds"].float())
 
-
             # Perform rounds of the pairwise stack
             s = torch.zeros_like(s_init)
             z = torch.zeros_like(z_init)
@@ -296,7 +321,6 @@ class Boltz1(LightningModule):
             # Compute pairwise mask
             mask = feats["token_pad_mask"].float()
             pair_mask = mask[:, :, None] * mask[:, None, :]
-
 
             for i in range(recycling_steps + 1):
                 with torch.set_grad_enabled(self.training and (i == recycling_steps)):
@@ -311,12 +335,9 @@ class Boltz1(LightningModule):
                     # Apply recycling
                     s = s_init + self.s_recycle(self.s_norm(s))
                     z = z_init + self.z_recycle(self.z_norm(z))
-                    s = s_init + self.s_recycle(self.s_norm(s))
-                    z = z_init + self.z_recycle(self.z_norm(z))
 
                     # Compute pairwise stack
                     if not self.no_msa:
-                        z = z + self.msa_module(z, s_inputs, feats)
                         z = z + self.msa_module(z, s_inputs, feats)
 
                     # Revert to uncompiled version for validation
@@ -325,61 +346,130 @@ class Boltz1(LightningModule):
                     else:
                         pairformer_module = self.pairformer_module
 
-
                     s, z = pairformer_module(s, z, mask=mask, pair_mask=pair_mask)
 
             pdistogram = self.distogram_module(z)
             dict_out = {"pdistogram": pdistogram}
 
-        # Compute structure module
+        # Profile diffusion module if enabled
         if self.training and self.structure_prediction_training:
-            dict_out.update(
-                self.structure_module(
-                    s_trunk=s,
-                    z_trunk=z,
-                    s_inputs=s_inputs,
-                    feats=feats,
-                    relative_position_encoding=relative_position_encoding,
-                    multiplicity=multiplicity_diffusion_train,
-                )
+            structure_module_fn = lambda: self.structure_module(
+                s_trunk=s,
+                z_trunk=z,
+                s_inputs=s_inputs,
+                feats=feats,
+                relative_position_encoding=relative_position_encoding,
+                multiplicity=multiplicity_diffusion_train,
             )
+            
+            if self.profiler_config['enabled'] and self.profiler_config['structure_module']:
+                with profile(
+                    activities=[ProfilerActivity.CPU, ProfilerActivity.CUDA],
+                    record_shapes=self.profiler_config['record_shapes'],
+                    profile_memory=self.profiler_config['profile_memory'],
+                    with_stack=self.profiler_config['with_stack'],
+                    with_flops=self.profiler_config['with_flops'],
+                ) as prof:
+                    with record_function("structure_module"):
+                        dict_out.update(structure_module_fn())
+                        
+                print("\nStructure Module Memory Profile:")
+                print(f"Peak Memory Usage: {torch.cuda.max_memory_allocated() / 1024**3:.2f} GB")
+                print("\nPer-Layer Memory Usage:")
+                print(prof.key_averages().table(sort_by="self_cuda_memory_usage", row_limit=self.profiler_config['row_limit']))
+                print("\nForward/Backward Pass Memory:")
+                print(prof.key_averages().table(sort_by="cuda_memory_usage", row_limit=self.profiler_config['row_limit']))
+                if self.profiler_config['export_chrome_trace']:
+                    prof.export_chrome_trace("diffusion_profile.json")
+            else:
+                # Run without profiling
+                dict_out.update(structure_module_fn())
 
         if (not self.training) or self.confidence_prediction:
-            dict_out.update(
-                self.structure_module.sample(
-                    s_trunk=s,
-                    z_trunk=z,
-                    s_inputs=s_inputs,
-                    feats=feats,
-                    relative_position_encoding=relative_position_encoding,
-                    num_sampling_steps=num_sampling_steps,
-                    atom_mask=feats["atom_pad_mask"],
-                    multiplicity=diffusion_samples,
-                    train_accumulate_token_repr=self.training,
-                    steering_args=self.steering_args,
-                )
+            diffusion_sampling_fn = lambda: self.structure_module.sample(
+                s_trunk=s,
+                z_trunk=z,
+                s_inputs=s_inputs,
+                feats=feats,
+                relative_position_encoding=relative_position_encoding,
+                num_sampling_steps=num_sampling_steps,
+                atom_mask=feats["atom_pad_mask"],
+                multiplicity=diffusion_samples,
+                train_accumulate_token_repr=self.training,
             )
+                
+            if self.profiler_config['enabled'] and self.profiler_config['diffusion_sampling']:
+                with profile(
+                    activities=[ProfilerActivity.CPU, ProfilerActivity.CUDA],
+                    record_shapes=self.profiler_config['record_shapes'],
+                    profile_memory=self.profiler_config['profile_memory'],
+                    with_stack=self.profiler_config['with_stack'],
+                    with_flops=self.profiler_config['with_flops'],
+                ) as prof:
+                    with record_function("diffusion_sampling"):
+                        dict_out.update(diffusion_sampling_fn())
+                        
+                print("\nDiffusion Sampling Memory Profile:")
+                print(f"Peak Memory Usage: {torch.cuda.max_memory_allocated() / 1024**3:.2f} GB")
+                print("\nPer-Layer Memory Usage:")
+                print(prof.key_averages().table(sort_by="self_cuda_memory_usage", row_limit=self.profiler_config['row_limit']))
+                print("\nForward/Backward Pass Memory:")
+                print(prof.key_averages().table(sort_by="cuda_memory_usage", row_limit=self.profiler_config['row_limit']))
+                if self.profiler_config['export_chrome_trace']:
+                    prof.export_chrome_trace("diffusion_sampling_profile.json")
+            else:
+                # Run without profiling
+                dict_out.update(diffusion_sampling_fn())
 
         if self.confidence_prediction:
-            dict_out.update(
-                self.confidence_module(
-                    s_inputs=s_inputs.detach(),
-                    s=s.detach(),
-                    z=z.detach(),
-                    s_diffusion=(
-                        dict_out["diff_token_repr"]
-                        if self.confidence_module.use_s_diffusion
-                        else None
-                    ),
-                    x_pred=dict_out["sample_atom_coords"].detach(),
-                    feats=feats,
-                    pred_distogram_logits=dict_out["pdistogram"].detach(),
-                    multiplicity=diffusion_samples,
-                    run_sequentially=run_confidence_sequentially,
-                )
+            confidence_module_fn = lambda: self.confidence_module(
+                s_inputs=s_inputs.detach(),
+                s=s.detach(),
+                z=z.detach(),
+                s_diffusion=(
+                    dict_out["diff_token_repr"]
+                    if self.confidence_module.use_s_diffusion
+                    else None
+                ),
+                x_pred=dict_out["sample_atom_coords"].detach(),
+                feats=feats,
+                pred_distogram_logits=dict_out["pdistogram"].detach(),
+                multiplicity=diffusion_samples,
+                run_sequentially=run_confidence_sequentially,
             )
+                
+            if self.profiler_config['enabled'] and self.profiler_config['confidence_module']:
+                with profile(
+                    activities=[ProfilerActivity.CPU, ProfilerActivity.CUDA],
+                    record_shapes=self.profiler_config['record_shapes'],
+                    profile_memory=self.profiler_config['profile_memory'],
+                    with_stack=self.profiler_config['with_stack'],
+                    with_flops=self.profiler_config['with_flops'],
+                ) as prof:
+                    with record_function("confidence_module"):
+                        dict_out.update(confidence_module_fn())
+                        
+                print("\nConfidence Module Memory Profile:")
+                print(f"Peak Memory Usage: {torch.cuda.max_memory_allocated() / 1024**3:.2f} GB")
+                print("\nPer-Layer Memory Usage:")
+                print(prof.key_averages().table(sort_by="self_cuda_memory_usage", row_limit=self.profiler_config['row_limit']))
+                print("\nForward/Backward Pass Memory:")
+                print(prof.key_averages().table(sort_by="cuda_memory_usage", row_limit=self.profiler_config['row_limit']))
+                if self.profiler_config['export_chrome_trace']:
+                    prof.export_chrome_trace("confidence_profile.json")
+            else:
+                # Run without profiling
+                dict_out.update(confidence_module_fn())
+
         if self.confidence_prediction and self.confidence_module.use_s_diffusion:
             dict_out.pop("diff_token_repr", None)
+            
+        # Log total execution time and peak memory
+        end_time = time.time()
+        print(f"\nForward Pass Summary:")
+        print(f"Total Execution Time: {end_time - start_time:.2f} seconds")
+        print(f"Peak Memory Usage: {torch.cuda.max_memory_allocated() / 1024**3:.2f} GB")
+        
         return dict_out
 
     def get_true_coordinates(
@@ -439,73 +529,63 @@ class Boltz1(LightningModule):
         return true_coords, rmsds, best_rmsds, true_coords_resolved_mask
 
     def training_step(self, batch: dict[str, Tensor], batch_idx: int) -> Tensor:
-        # Sample recycling steps
-        recycling_steps = random.randint(0, self.training_args.recycling_steps)
+        # Original arguments
+        train_args = self.training_args
+        diffusion_samples = train_args["diffusion_samples"]
 
-        # Compute the forward pass
-        out = self(
-            feats=batch,
-            recycling_steps=recycling_steps,
-            num_sampling_steps=self.training_args.sampling_steps,
-            multiplicity_diffusion_train=self.training_args.diffusion_multiplicity,
-            diffusion_samples=self.training_args.diffusion_samples,
-        )
+        # Backward compatibility for RMSD training
+        B, N, L, _ = batch["coords"].shape
+        batch["cat_has_msa"] = getattr(batch, "cat_has_msa", torch.ones(B, dtype=torch.bool, device=self.device))
 
-        # Compute losses
-        if self.structure_prediction_training:
-            disto_loss, _ = distogram_loss(
-                out,
-                batch,
-            )
-            try:
-                diffusion_loss_dict = self.structure_module.compute_loss(
-                    batch,
-                    out,
-                    multiplicity=self.training_args.diffusion_multiplicity,
-                    **self.diffusion_loss_args,
-                )
-            except Exception as e:
-                print(f"Skipping batch {batch_idx} due to error: {e}")
-                return None
-
+        # Profile execution if enabled
+        to_profile = self.profiler_config['enabled'] and batch_idx == 0
+        if to_profile and self.profiler_config['structure_module'] and self.current_epoch == 0:
+            with profile(
+                activities=[ProfilerActivity.CPU, ProfilerActivity.CUDA],
+                record_shapes=self.profiler_config['record_shapes'],
+                profile_memory=self.profiler_config['profile_memory'],
+                with_stack=self.profiler_config['with_stack'],
+                with_flops=self.profiler_config['with_flops']
+            ) as prof:
+                with record_function("structure_module"):
+                    forward_output = self(
+                        batch,
+                        recycling_steps=train_args["recycling_steps"],
+                        multiplicity_diffusion_train=train_args.get(
+                            "multiplicity_diffusion_train",
+                            1,
+                        ),
+                        diffusion_samples=diffusion_samples,
+                        autoguidance_ratio=train_args.get("autoguidance_ratio", 0.0),
+                        guidance_weight=train_args.get("guidance_weight", 1.0),
+                    )
+            
+            print(prof.key_averages().table(
+                sort_by="cuda_time_total", 
+                row_limit=self.profiler_config['row_limit']
+            ))
+            if self.profiler_config['export_chrome_trace']:
+                prof.export_chrome_trace("structure_profile_train.json")
         else:
-            disto_loss = 0.0
-            diffusion_loss_dict = {"loss": 0.0, "loss_breakdown": {}}
-
-        if self.confidence_prediction:
-            # confidence model symmetry correction
-            true_coords, _, _, true_coords_resolved_mask = self.get_true_coordinates(
+            forward_output = self(
                 batch,
-                out,
-                diffusion_samples=self.training_args.diffusion_samples,
-                symmetry_correction=self.training_args.symmetry_correction,
+                recycling_steps=train_args["recycling_steps"],
+                multiplicity_diffusion_train=train_args.get(
+                    "multiplicity_diffusion_train",
+                    1,
+                ),
+                diffusion_samples=diffusion_samples,
+                autoguidance_ratio=train_args.get("autoguidance_ratio", 0.0),
+                guidance_weight=train_args.get("guidance_weight", 1.0),
             )
 
-            confidence_loss_dict = confidence_loss(
-                out,
-                batch,
-                true_coords,
-                true_coords_resolved_mask,
-                alpha_pae=self.alpha_pae,
-                multiplicity=self.training_args.diffusion_samples,
-            )
-        else:
-            confidence_loss_dict = {
-                "loss": torch.tensor(0.0).to(batch["token_index"].device),
-                "loss_breakdown": {},
-            }
+        loss = 0.0
+        loss += forward_output.get("structure_loss", 0.0)
 
-        # Aggregate losses
-        loss = (
-            self.training_args.confidence_loss_weight * confidence_loss_dict["loss"]
-            + self.training_args.diffusion_loss_weight * diffusion_loss_dict["loss"]
-            + self.training_args.distogram_loss_weight * disto_loss
-        )
-        # Log losses
-        self.log("train/distogram_loss", disto_loss)
-        self.log("train/diffusion_loss", diffusion_loss_dict["loss"])
-        for k, v in diffusion_loss_dict["loss_breakdown"].items():
-            self.log(f"train/{k}", v)
+        # Optional: log diffusion loss breakdown
+        for k, v in forward_output.items():
+            if k.startswith("structure_") and k != "structure_loss":
+                self.log(f"train/{k}", v, on_step=True, on_epoch=True)
 
         if self.confidence_prediction:
             self.train_confidence_loss_logger.update(
@@ -521,6 +601,7 @@ class Boltz1(LightningModule):
         self.log("train/loss", loss)
         self.training_log()
         return loss
+        # training_step return loss
 
     def training_log(self):
         self.log("train/grad_norm", self.gradient_norm(self), prog_bar=False)
@@ -599,6 +680,7 @@ class Boltz1(LightningModule):
         return norm
 
     def validation_step(self, batch: dict[str, Tensor], batch_idx: int):
+        start_time = time.time()
         # Compute the forward pass
         n_samples = self.validation_args.diffusion_samples
         try:
@@ -632,14 +714,9 @@ class Boltz1(LightningModule):
             # Compute predicted dists
             preds = out["pdistogram"]
             pred_softmax = torch.softmax(preds, dim=-1)
-            pred_softmax = pred_softmax.argmax(dim=-1)
             pred_softmax = torch.nn.functional.one_hot(
-                pred_softmax, num_classes=preds.shape[-1]
-            pred_softmax = pred_softmax.argmax(dim=-1)
-            pred_softmax = torch.nn.functional.one_hot(
-                pred_softmax, num_classes=preds.shape[-1]
+                pred_softmax.argmax(dim=-1), num_classes=preds.shape[-1]
             )
-            pred_dist = (pred_softmax * mid_points).sum(dim=-1)
             pred_dist = (pred_softmax * mid_points).sum(dim=-1)
             true_center = batch["disto_center"]
             true_dists = torch.cdist(true_center, true_center)
@@ -864,6 +941,12 @@ class Boltz1(LightningModule):
         self.rmsd.update(rmsds)
         self.best_rmsd.update(best_rmsds)
 
+        # Log validation step timing and memory
+        end_time = time.time()
+        print(f"\nValidation Step Summary (Batch {batch_idx}):")
+        print(f"Execution Time: {end_time - start_time:.2f} seconds")
+        print(f"Peak Memory Usage: {torch.cuda.max_memory_allocated() / 1024**3:.2f} GB")
+        
     def on_validation_epoch_end(self):
         avg_lddt = {}
         avg_disto_lddt = {}
@@ -1139,26 +1222,26 @@ class Boltz1(LightningModule):
 
     def predict_step(self, batch: Any, batch_idx: int, dataloader_idx: int = 0) -> Any:
         try:
+            # Extract autoguidance parameters if present
+            autoguidance_ratio = self.predict_args.get("autoguidance_ratio", 0.0)
+            guidance_weight = self.predict_args.get("guidance_weight", 1.0)
+            
             out = self(
                 batch,
                 recycling_steps=self.predict_args["recycling_steps"],
                 num_sampling_steps=self.predict_args["sampling_steps"],
                 diffusion_samples=self.predict_args["diffusion_samples"],
                 run_confidence_sequentially=True,
+                autoguidance_ratio=autoguidance_ratio,
+                guidance_weight=guidance_weight,
             )
             pred_dict = {"exception": False}
             pred_dict["masks"] = batch["atom_pad_mask"]
             pred_dict["coords"] = out["sample_atom_coords"]
             if self.predict_args.get("write_confidence_summary", True):
                 pred_dict["confidence_score"] = (
-                    4 * out["complex_plddt"]
-                    + (
-                        out["iptm"]
-                        if not torch.allclose(
-                            out["iptm"], torch.zeros_like(out["iptm"])
-                        )
-                        else out["ptm"]
-                    )
+                    4 * out["complex_plddt"] +
+                    (out["iptm"] if not torch.allclose(out["iptm"], torch.zeros_like(out["iptm"])) else out["ptm"])
                 ) / 5
                 for key in [
                     "ptm",
@@ -1186,21 +1269,20 @@ class Boltz1(LightningModule):
                 gc.collect()
                 return {"exception": True}
             else:
-                raise
+                raise {"exception": True}
 
     def configure_optimizers(self):
         """Configure the optimizer."""
-
+        # Apply finetuning configuration
+        self.setup_finetuning()
+        
+        # Get trainable parameters
         if self.structure_prediction_training:
-            parameters = [p for p in self.parameters() if p.requires_grad]
+            parameters = self.get_trainable_parameters()
+            print(f"Number of trainable structure parameters: {len(parameters)}")
         else:
-            parameters = [
-                p for p in self.confidence_module.parameters() if p.requires_grad
-            ] + [
-                p
-                for p in self.structure_module.out_token_feat_update.parameters()
-                if p.requires_grad
-            ]
+            parameters = [p for p in self.confidence_module.parameters() if p.requires_grad]
+            print(f"Number of trainable confidence parameters: {len(parameters)}")
 
         optimizer = torch.optim.Adam(
             parameters,
@@ -1218,6 +1300,7 @@ class Boltz1(LightningModule):
                 decay_every_n_steps=self.training_args.lr_decay_every_n_steps,
                 decay_factor=self.training_args.lr_decay_factor,
             )
+            # each epoch
             return [optimizer], [{"scheduler": scheduler, "interval": "step"}]
 
         return optimizer
@@ -1235,9 +1318,7 @@ class Boltz1(LightningModule):
                 self.ema.load_state_dict(checkpoint["ema"], device=torch.device("cpu"))
             else:
                 self.ema = None
-                print(
-                    "Warning: EMA state not loaded due to incompatible model parameters."
-                )
+                print("Warning: EMA state not loaded due to incompatible model parameters.")
 
     def on_train_start(self):
         if self.use_ema and self.ema is None:
@@ -1246,6 +1327,26 @@ class Boltz1(LightningModule):
             )
         elif self.use_ema:
             self.ema.to(self.device)
+            
+        # Ensure LoRA parameters are on the right device
+        if hasattr(self, '_lora_applied') and self._lora_applied:
+            print("Synchronizing LoRA parameters to device:", self.device)
+            try:
+                # Force garbage collection to free up memory
+                gc.collect()
+                torch.cuda.empty_cache()
+                
+                # Synchronize parameters to the current device
+                self.sync_lora_parameters(self.device)
+                
+                # Double-check that parameters are properly on device
+                with torch.cuda.device(self.device):
+                    torch.cuda.empty_cache()
+                    
+                print("Successfully synchronized LoRA parameters")
+            except Exception as e:
+                print(f"Warning: Error during LoRA parameter synchronization: {e}")
+                print("Training will continue, but you may encounter CUDA errors later")
 
     def on_train_epoch_start(self) -> None:
         if self.use_ema:
@@ -1268,9 +1369,326 @@ class Boltz1(LightningModule):
 
     def on_validation_start(self):
         self.prepare_eval()
+        # Ensure LoRA parameters are on the right device
+        if hasattr(self, '_lora_applied') and self._lora_applied:
+            self.sync_lora_parameters()
 
     def on_predict_start(self) -> None:
         self.prepare_eval()
+        # Ensure LoRA parameters are on the right device
+        if hasattr(self, '_lora_applied') and self._lora_applied:
+            self.sync_lora_parameters()
 
     def on_test_start(self) -> None:
         self.prepare_eval()
+        # Ensure LoRA parameters are on the right device
+        if hasattr(self, '_lora_applied') and self._lora_applied:
+            self.sync_lora_parameters()
+            
+    def sync_lora_parameters(self, device=None):
+        """Ensure all LoRA parameters are on the correct device.
+        
+        Args:
+            device: Target device to move parameters to. If None, uses each module's weight device.
+        """
+        if not hasattr(self, 'lora_layer_types'):
+            print("Warning: lora_layer_types not defined; skipping sync_lora_parameters")
+            return
+            
+        try:
+            # Explicitly run garbage collection to free up CUDA memory
+            gc.collect()
+            torch.cuda.empty_cache()
+            
+            for module in self.modules():
+                if not isinstance(module, LoRALayer):
+                    continue
+                    
+                if not hasattr(module, 'r') or module.r <= 0:
+                    continue
+                    
+                # Determine the target device (either specified or from the module's weights)
+                try:
+                    target_device = device if device is not None else module.weight.device
+                except Exception as e:
+                    print(f"Warning: Could not determine target device for module: {e}")
+                    continue
+                
+                # Move LoRA parameters
+                try:
+                    if module.lora_A.device != target_device:
+                        module.lora_A.data = module.lora_A.data.to(target_device)
+                    if module.lora_B.device != target_device:
+                        module.lora_B.data = module.lora_B.data.to(target_device)
+                    if module.weight.device != target_device:
+                        module.weight.data = module.weight.data.to(target_device)
+                    if hasattr(module, 'bias') and module.bias is not None and module.bias.device != target_device:
+                        module.bias.data = module.bias.data.to(target_device)
+                except Exception as e:
+                    print(f"Warning: Failed to move LoRA parameters: {e}")
+                        
+            # Explicitly run garbage collection again
+            gc.collect()
+            torch.cuda.empty_cache()
+            
+        except Exception as e:
+            print(f"Warning: Error during sync_lora_parameters: {e}")
+            # Don't let this error prevent training from continuing
+            gc.collect()
+            torch.cuda.empty_cache()
+
+    def setup_finetuning(self) -> None:
+        """Configure which layers to freeze/unfreeze based on finetune_config.
+        
+        This supports both conventional parameter freezing and LoRA fine-tuning.
+        """
+        if not self.finetune_config:
+            return
+            
+        # Default to freezing all layers if not specified
+        freeze_all = self.finetune_config.get('freeze_all', True)
+        
+        # Get specific layer configurations
+        freeze_msa_module = self.finetune_config.get('freeze_msa_module', freeze_all)
+        freeze_confidence = self.finetune_config.get('freeze_confidence', freeze_all)
+        freeze_structure = self.finetune_config.get('freeze_structure', freeze_all)
+        
+        # Check if we're using LoRA fine-tuning
+        use_lora = self.finetune_config.get('use_lora', False)
+        
+        # First freeze all parameters if needed
+        if freeze_all:
+            for param in self.parameters():
+                param.requires_grad = False
+        
+        # If using LoRA, apply it to the modules specified
+        if use_lora:
+            self.setup_lora_finetuning()
+        else:
+            # Standard fine-tuning approaced
+            
+            # Unfreeze embedding layers if requested
+            if not freeze_msa_module:
+                for name, param in self.named_parameters():
+                    if any(x in name for x in ['input_embedder', 'rel_pos', 'token_bonds', 's_init', 'z_init']):
+                        param.requires_grad = True
+
+            # Unfreeze structure module if requested
+            if not freeze_structure and self.structure_prediction_training:
+                for name, param in self.named_parameters():
+                    if 'structure_module' in name:
+                        param.requires_grad = True
+                        
+            # Unfreeze confidence module if requested
+            if not freeze_confidence and self.confidence_prediction:
+                for name, param in self.named_parameters():
+                    if 'confidence_module' in name:
+                        param.requires_grad = True
+                        
+    def setup_lora_finetuning(self) -> None:
+        """Set up LoRA fine-tuning by replacing layers in specified modules with LoRA equivalents."""
+        # Get LoRA configuration
+        lora_r = self.finetune_config.get('lora_r', 8)
+        lora_alpha = self.finetune_config.get('lora_alpha', 16)
+        lora_dropout = self.finetune_config.get('lora_dropout', 0.1)
+        
+        # Get which modules to apply LoRA to
+        lora_modules = self.finetune_config.get('lora_modules', {})
+
+        if len(lora_modules) == 0:
+            raise ValueError("lora_modules must be a non-empty dictionary")
+        
+        # Get layer type filters
+        lora_layer_types = self.finetune_config.get('lora_layer_types', {})
+
+        if len(lora_layer_types) == 0:
+            raise ValueError("lora_layer_types must be a non-empty dictionary")
+            
+        # Store layer types for later use in device synchronization
+        self.lora_layer_types = tuple([LoRALinear, LoRAEmbedding])
+    
+        if lora_modules.get('structure', False) and self.structure_prediction_training:
+            self._apply_lora_to_module(self.structure_module, lora_r, lora_alpha, lora_dropout, lora_layer_types)
+        
+        if lora_modules.get('confidence', False) and self.confidence_prediction:
+            self._apply_lora_to_module(self.confidence_module, lora_r, lora_alpha, lora_dropout, lora_layer_types)
+            
+        # Mark that LoRA has been applied to this model
+        self._lora_applied = True
+        print("LoRA applied flag: ", self._lora_applied)
+        
+        # If the model is already on a specific device, ensure LoRA layers are there too
+        if hasattr(self, 'device') and self.device.type != 'cpu':
+            self.to(self.device)
+
+    def _apply_lora_to_module(
+        self, 
+        module: nn.Module, 
+        r: int, 
+        lora_alpha: float, 
+        lora_dropout: float,
+        layer_types: dict[str, bool]
+    ) -> None:
+        """Apply LoRA to all eligible layers within a module.
+        
+        Args:
+            module: The module to apply LoRA to
+            r: LoRA rank parameter
+            lora_alpha: LoRA alpha parameter
+            lora_dropout: Dropout rate for LoRA layers
+            layer_types: Dictionary specifying which layer types to apply LoRA to
+        """
+
+        from boltz.model.modules.lora import LoRALinear, LoRAEmbedding
+
+
+        for name, submodule in list(module.named_children()):
+            # Check if the child is a linear layer and should be LoRA-fied
+            if isinstance(submodule, nn.Linear):
+            # Replace with LoRA equivalent
+                setattr(submodule, name, LoRALinear(
+                    in_features=module.in_features, 
+                    out_features=module.out_features,
+                    r=r,
+                    lora_alpha=lora_alpha,
+                    lora_dropout=lora_dropout
+                ))
+                # Copy original weights
+                submodule._modules[name].weight.data.copy_(submodule.weight.data)
+                if module.bias is not None:
+                    submodule._modules[name].bias.data.copy_(submodule.bias.data)
+
+            elif isinstance(submodule, nn.Embedding):
+                setattr(submodule, name, LoRAEmbedding(
+                    num_embeddings=submodule.num_embeddings,
+                    embedding_dim=submodule.embedding_dim,
+                    r=r,
+                    lora_alpha=lora_alpha,
+                    lora_dropout=lora_dropout
+                ))
+                # Copy original weights
+                submodule._modules[name].weight.data.copy_(submodule.weight.data)
+                # Copy original weights
+                              
+            # Check if the child is an attention layer and should be LoRA-fied
+            elif self._is_attention_layer(child) and layer_types.get('attention', True):
+                # For attention modules, recursively apply LoRA to their internal linear layers
+                self._apply_lora_to_module(child, r, lora_alpha, lora_dropout, layer_types)
+            else:
+                # Recursively apply LoRA to submodules
+                self._apply_lora_to_module(module, r, lora_alpha, lora_dropout, layer_types)
+    
+    def _is_attention_layer(self, module: nn.Module) -> bool:
+        """Check if a module is an attention layer.
+        
+        Args:
+            module: Module to check
+            
+        Returns:
+            True if the module is an attention layer, False otherwise
+        """
+        # Check module class name for common attention layer patterns
+        class_name = module.__class__.__name__
+        attention_patterns = ['Attention', 'MultiHead', 'SelfAttention', 'PairformerLayer', 'MSAAttention']
+        return any(pattern in class_name for pattern in attention_patterns)
+
+    def get_trainable_parameters(self) -> list[nn.Parameter]:
+        """Get list of trainable parameters for optimizer configuration."""
+        return [p for p in self.parameters() if p.requires_grad]
+        
+    def print_trainable_parameters(self) -> None:
+        """Print which parameters are trainable and which are frozen."""
+        trainable_params = []
+        frozen_params = []
+        trainable_param_count = 0
+        total_param_count = 0
+        
+        for name, param in self.named_parameters():
+            total_param_count += param.numel()
+            if param.requires_grad:
+                trainable_params.append(name)
+                trainable_param_count += param.numel()
+            else:
+                frozen_params.append(name)
+                
+        print(f"Trainable parameters: {trainable_param_count:,} / {total_param_count:,} "
+              f"({100 * trainable_param_count / total_param_count:.2f}%)")
+                
+        print("\nTrainable parameter names:")
+        for param in trainable_params:
+            print(f"  {param}")
+            
+        print("\nFrozen parameter names:")
+        # Print only the first 20 frozen parameter names to avoid huge output
+        for param in frozen_params[:20]:
+            print(f"  {param}")
+        if len(frozen_params) > 20:
+            print(f"  ... and {len(frozen_params) - 20} more")
+
+    def to(self, *args, **kwargs):
+        """Override to method to ensure LoRA layers move to the correct device."""
+        # Call the parent class's to method first
+        model = super().to(*args, **kwargs)
+        
+        # Extract the target device from args or kwargs
+        device = None
+        if args and isinstance(args[0], (str, torch.device)):
+            device = args[0]
+        elif 'device' in kwargs:
+            device = kwargs['device']
+            
+        # If LoRA has been applied and we have a target device, sync the parameters
+        if getattr(self, '_lora_applied', False) and device is not None:
+            self.sync_lora_parameters(device)
+            
+        return model
+
+    def configure_autoguidance(
+        self, 
+        enable_training=False, 
+        loss_weight=0.1, 
+        consistency_type="mse", 
+        distogram_weight=0.0,
+        scaling="linear",
+        min_sigma_cutoff=1.0
+    ):
+        """Configure autoguidance parameters for both training and inference.
+        
+        Parameters
+        ----------
+        enable_training : bool, optional
+            Whether to enable autoguidance self-supervised training, by default False
+        loss_weight : float, optional
+            Weight for autoguidance consistency loss, by default 0.1
+        consistency_type : str, optional
+            Type of consistency loss ("mse", "l1", or "huber"), by default "mse"
+        distogram_weight : float, optional
+            Weight for distogram consistency loss, by default 0.0
+        scaling : str, optional
+            Autoguidance scaling schedule during sampling, by default "linear"
+        min_sigma_cutoff : float, optional
+            Minimum sigma threshold for autoguidance, by default 1.0
+        """
+        # Create a copy of the model for autoguidance
+        if not hasattr(self.structure_module, "score_model_ag") or self.structure_module.score_model_ag is None:
+            print("Setting up autoguidance model...")
+            self.structure_module.configure_autoguidance(
+                score_model_ag=self.structure_module.score_model,  # Use the same model for autoguidance
+                autoguidance_scaling=scaling,
+                autoguidance_min_sigma_cutoff=min_sigma_cutoff
+            )
+        else:
+            # Update existing autoguidance parameters
+            self.structure_module.autoguidance_scaling = scaling
+            self.structure_module.autoguidance_min_sigma_cutoff = min_sigma_cutoff
+        
+        # Set training parameters
+        self.enable_autoguidance_training = enable_training
+        self.autoguidance_loss_weight = loss_weight
+        self.autoguidance_consistency_type = consistency_type
+        self.distogram_consistency_weight = distogram_weight
+        
+        print(f"Autoguidance configured: training={enable_training}, scaling={scaling}, cutoff={min_sigma_cutoff}")
+        if enable_training:
+            print(f"Training parameters: loss_weight={loss_weight}, consistency={consistency_type}, distogram_weight={distogram_weight}")
+            

@@ -419,6 +419,7 @@ class AtomDiffusion(Module):
             times=self.c_noise(sigma),
             **network_condition_kwargs,
         )
+        # 
 
         denoised_coords = (
             self.c_skip(padded_sigma) * noised_atom_coords
@@ -472,6 +473,7 @@ class AtomDiffusion(Module):
         atom_mask = atom_mask.repeat_interleave(multiplicity, 0)
 
         shape = (*atom_mask.shape, 3)
+        # multiplicity
 
         # get the schedule, which is returned as (sigma, gamma) tuple, and pair up with the next sigma and gamma
         sigmas = self.sample_schedule(num_sampling_steps)
@@ -642,6 +644,7 @@ class AtomDiffusion(Module):
                     token_repr = torch.zeros_like(token_a)
 
                 with torch.set_grad_enabled(train_accumulate_token_repr):
+                    # more of time embedding here
                     sigma = torch.full(
                         (atom_coords_denoised.shape[0],),
                         t_hat,
@@ -663,12 +666,15 @@ class AtomDiffusion(Module):
                 atom_coords_noisy = atom_coords_noisy.to(atom_coords_denoised)
 
             denoised_over_sigma = (atom_coords_noisy - atom_coords_denoised) / t_hat
+
+            # coord_noisy = step_scale * (sigma_t - t_hat) * denoised_over_sigma
             atom_coords_next = (
                 atom_coords_noisy
                 + self.step_scale * (sigma_t - t_hat) * denoised_over_sigma
             )
 
             atom_coords = atom_coords_next
+            # 
 
         return dict(sample_atom_coords=atom_coords, diff_token_repr=token_repr)
 

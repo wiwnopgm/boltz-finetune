@@ -231,7 +231,8 @@ class ConfidenceModule(nn.Module):
         if self.imitate_trunk:
             s_inputs = self.input_embedder(feats)
 
-            # Initialize the sequence and pairwise embeddings
+            # Initialize the sequence and pairwise embeddings.
+            # new s and z matrices
             s_init = self.s_init(s_inputs)
             z_init = (
                 self.z_init_1(s_inputs)[:, :, None]

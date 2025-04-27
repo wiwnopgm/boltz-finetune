@@ -111,6 +111,7 @@ model:
     activation_checkpointing: true
     offload_to_cpu: false
 
+  # Diffusion step
   score_model_args:
     sigma_data: 16
     dim_fourier: 256

@@ -1,4 +1,3 @@
-import os
 import pickle
 import urllib.request
 from dataclasses import asdict, dataclass
@@ -11,6 +10,7 @@ from pytorch_lightning import Trainer, seed_everything
 from pytorch_lightning.strategies import DDPStrategy
 from pytorch_lightning.utilities import rank_zero_only
 from tqdm import tqdm
+import loralib as lora
 
 from boltz.data import const
 from boltz.data.module.inference import BoltzInferenceDataModule
@@ -36,34 +36,6 @@ class BoltzProcessedInput:
     manifest: Manifest
     targets_dir: Path
     msa_dir: Path
-    constraints_dir: Optional[Path] = None
-
-
-@dataclass
-class PairformerArgs:
-    """Pairformer arguments."""
-
-    num_blocks: int = 48
-    num_heads: int = 16
-    dropout: float = 0.0
-    activation_checkpointing: bool = False
-    offload_to_cpu: bool = False
-    use_trifast: bool = True
-
-
-@dataclass
-class MSAModuleArgs:
-    """MSA module arguments."""
-
-    msa_s: int = 64
-    msa_blocks: int = 4
-    msa_dropout: float = 0.0
-    z_dropout: float = 0.0
-    pairwise_head_width: int = 32
-    pairwise_num_heads: int = 4
-    activation_checkpointing: bool = False
-    offload_to_cpu: bool = False
-    use_trifast: bool = True
 
 
 @dataclass
@@ -84,18 +56,6 @@ class BoltzDiffusionParams:
     alignment_reverse_diff: bool = True
     synchronize_sigmas: bool = True
     use_inference_model_cache: bool = True
-
-
-@dataclass
-class BoltzSteeringParams:
-    """Steering parameters."""
-
-    fk_steering: bool = True
-    num_particles: int = 3
-    fk_lambda: float = 4.0
-    fk_resampling_interval: int = 3
-    guidance_update: bool = True
-    num_gd_steps: int = 16
 
 
 @rank_zero_only
@@ -125,25 +85,6 @@ def download(cache: Path) -> None:
             "change the cache directory with the --cache flag."
         )
         urllib.request.urlretrieve(MODEL_URL, str(model))  # noqa: S310
-
-
-def get_cache_path() -> str:
-    """Determine the cache path, prioritising the BOLTZ_CACHE environment variable.
-
-    Returns
-    -------
-    str: Path
-        Path to use for boltz cache location.
-
-    """
-    env_cache = os.environ.get("BOLTZ_CACHE")
-    if env_cache:
-        resolved_cache = Path(env_cache).expanduser().resolve()
-        if not resolved_cache.is_absolute():
-            raise ValueError(f"BOLTZ_CACHE must be an absolute path, got: {env_cache}")
-        return str(resolved_cache)
-
-    return str(Path("~/.boltz").expanduser())
 
 
 def check_inputs(
@@ -299,10 +240,11 @@ def process_inputs(  # noqa: C901, PLR0912, PLR0915
     data: list[Path],
     out_dir: Path,
     ccd_path: Path,
+    use_msa_server: bool,
     msa_server_url: str,
     msa_pairing_strategy: str,
     max_msa_seqs: int = 4096,
-    use_msa_server: bool = False,
+    custom_msa_dir: Optional[Path] = None,
 ) -> None:
     """Process the input data and output directory.
 
@@ -316,8 +258,12 @@ def process_inputs(  # noqa: C901, PLR0912, PLR0915
         The path to the CCD dictionary.
     max_msa_seqs : int, optional
         Max number of MSA sequences, by default 4096.
-    use_msa_server : bool, optional
-        Whether to use the MMSeqs2 server for MSA generation, by default False.
+    msa_server_url : str
+        The MSA server URL.
+    msa_pairing_strategy : str
+        The MSA pairing strategy.
+    custom_msa_dir : Optional[Path], optional
+        Path to directory containing pre-generated MSA files. If provided, will use these instead of generating new ones.
 
     Returns
     -------
@@ -335,10 +281,16 @@ def process_inputs(  # noqa: C901, PLR0912, PLR0915
 
         manifest: Manifest = Manifest.load(manifest_path)
         input_ids = [d.stem for d in data]
-        existing_records = [
-            record for record in manifest.records if record.id in input_ids
-        ]
-        processed_ids = [record.id for record in existing_records]
+        existing_records, processed_ids = zip(
+            *[
+                (record, record.id)
+                for record in manifest.records
+                if record.id in input_ids
+            ]
+        )
+
+        if isinstance(existing_records, tuple):
+            existing_records = list(existing_records)
 
         # Check how many examples need to be processed
         missing = len(input_ids) - len(processed_ids)
@@ -358,14 +310,12 @@ def process_inputs(  # noqa: C901, PLR0912, PLR0915
     msa_dir = out_dir / "msa"
     structure_dir = out_dir / "processed" / "structures"
     processed_msa_dir = out_dir / "processed" / "msa"
-    processed_constraints_dir = out_dir / "processed" / "constraints"
     predictions_dir = out_dir / "predictions"
 
     out_dir.mkdir(parents=True, exist_ok=True)
     msa_dir.mkdir(parents=True, exist_ok=True)
     structure_dir.mkdir(parents=True, exist_ok=True)
     processed_msa_dir.mkdir(parents=True, exist_ok=True)
-    processed_constraints_dir.mkdir(parents=True, exist_ok=True)
     predictions_dir.mkdir(parents=True, exist_ok=True)
 
     # Load CCD
@@ -405,6 +355,21 @@ def process_inputs(  # noqa: C901, PLR0912, PLR0915
                 if (chain.mol_type == prot_id) and (chain.msa_id == 0):
                     entity_id = chain.entity_id
                     msa_id = f"{target_id}_{entity_id}"
+                    
+                    # Check if custom MSA exists
+                    if custom_msa_dir:
+                        custom_msa_path = custom_msa_dir / f"{msa_id}.csv"
+                        if custom_msa_path.exists():
+                            chain.msa_id = custom_msa_path
+                            continue
+                        custom_msa_path = custom_msa_dir / f"{msa_id}.a3m"
+                        if custom_msa_path.exists():
+                            chain.msa_id = custom_msa_path
+                            continue
+                        msg = f"Custom MSA file for {msa_id} not found in {custom_msa_dir}"
+                        raise FileNotFoundError(msg)
+                    
+                    # If no custom MSA, add to generation list
                     to_generate[msa_id] = target.sequences[entity_id]
                     chain.msa_id = msa_dir / f"{msa_id}.csv"
 
@@ -412,21 +377,18 @@ def process_inputs(  # noqa: C901, PLR0912, PLR0915
                 elif chain.msa_id == 0:
                     chain.msa_id = -1
 
-            # Generate MSA
-            if to_generate and not use_msa_server:
-                msg = "Missing MSA's in input and --use_msa_server flag not set."
-                raise RuntimeError(msg)
-
+            # Generate MSA if needed and no custom MSAs provided
             if to_generate:
-                msg = f"Generating MSA for {path} with {len(to_generate)} protein entities."
-                click.echo(msg)
-                compute_msa(
-                    data=to_generate,
-                    target_id=target_id,
-                    msa_dir=msa_dir,
-                    msa_server_url=msa_server_url,
-                    msa_pairing_strategy=msa_pairing_strategy,
-                )
+                if not custom_msa_dir:
+                    msg = f"Generating MSA for {path} with {len(to_generate)} protein entities."
+                    click.echo(msg)
+                    compute_msa(
+                        data=to_generate,
+                        target_id=target_id,
+                        msa_dir=msa_dir,
+                        msa_server_url=msa_server_url,
+                        msa_pairing_strategy=msa_pairing_strategy,
+                    )
 
             # Parse MSA data
             msas = sorted({c.msa_id for c in target.record.chains if c.msa_id != -1})
@@ -447,10 +409,10 @@ def process_inputs(  # noqa: C901, PLR0912, PLR0915
                         msa: MSA = parse_a3m(
                             msa_path,
                             taxonomy=None,
-                            max_seqs=max_msa_seqs,
+                            max_seqs=const.max_msa_seqs,
                         )
                     elif msa_path.suffix == ".csv":
-                        msa: MSA = parse_csv(msa_path, max_seqs=max_msa_seqs)
+                        msa: MSA = parse_csv(msa_path, max_seqs=const.max_msa_seqs)
                     else:
                         msg = f"MSA file {msa_path} not supported, only a3m or csv."
                         raise RuntimeError(msg)
@@ -468,10 +430,6 @@ def process_inputs(  # noqa: C901, PLR0912, PLR0915
             # Dump structure
             struct_path = structure_dir / f"{target.record.id}.npz"
             target.structure.dump(struct_path)
-
-            # Dump constraints
-            constraints_path = processed_constraints_dir / f"{target.record.id}.npz"
-            target.residue_constraints.dump(constraints_path)
 
         except Exception as e:
             if len(data) > 1:
@@ -501,8 +459,8 @@ def cli() -> None:
 @click.option(
     "--cache",
     type=click.Path(exists=False),
-    help="The directory where to download the data and model. Default is ~/.boltz, or $BOLTZ_CACHE if set.",
-    default=get_cache_path,
+    help="The directory where to download the data and model. Default is ~/.boltz.",
+    default="~/.boltz",
 )
 @click.option(
     "--checkpoint",
@@ -600,9 +558,70 @@ def cli() -> None:
     default="greedy",
 )
 @click.option(
-    "--no_potentials",
+    "--custom_msa_dir",
+    type=click.Path(exists=True),
+    help="Path to directory containing pre-generated MSA files. If provided, will use these instead of generating new ones.",
+    default=None,
+)
+@click.option(
+    "--use_lora",
     is_flag=True,
-    help="Whether to not use potentials for steering. Default is False.",
+    help="Whether to use LoRA layers for inference. Default is False.",
+    default=False,
+)
+@click.option(
+    "--lora_r",
+    type=int,
+    help="LoRA rank parameter. Default is 8.",
+    default=8,
+)
+@click.option(
+    "--lora_alpha",
+    type=float,
+    help="LoRA alpha parameter. Default is 16.",
+    default=16,
+)
+@click.option(
+    "--lora_dropout",
+    type=float,
+    help="LoRA dropout parameter. Default is 0.1.",
+    default=0.1,
+)
+@click.option(
+    "--lora_modules",
+    type=str,
+    help="Comma-separated list of modules to apply LoRA to (embeddings,trunk,confidence,structure).",
+    default="trunk,structure",
+)
+@click.option(
+    "--use_autoguidance",
+    is_flag=True,
+    help="Whether to use the Enhanced Autoguidance Mechanism. Default is False.",
+    default=False,
+)
+@click.option(
+    "--autoguidance_ratio",
+    type=float,
+    help="The ratio of the original structure to the predicted structure. Default is 0.5.",
+    default=0.5,
+)
+@click.option(
+    "--guidance_weight",
+    type=float,
+    help="The weight of the guidance term in the loss function. Default is 0.8.",
+    default=0.8,
+)
+@click.option(
+    "--autoguidance_scaling",
+    type=click.Choice(["constant", "linear", "exp", "sigmoid"]),
+    help="The scaling function to use for the guidance term. Default is linear.",
+    default="linear",
+)
+@click.option(
+    "--autoguidance_min_sigma_cutoff",
+    type=float,
+    help="The minimum sigma cutoff for the guidance term. Default is 1.0.",
+    default=1.0,
 )
 def predict(
     data: str,
@@ -624,7 +643,17 @@ def predict(
     use_msa_server: bool = False,
     msa_server_url: str = "https://api.colabfold.com",
     msa_pairing_strategy: str = "greedy",
-    no_potentials: bool = False,
+    custom_msa_dir: Optional[str] = None,
+    use_lora: bool = False,
+    lora_r: int = 8,
+    lora_alpha: float = 16,
+    lora_dropout: float = 0.1,
+    lora_modules: str = "trunk,structure",
+    use_autoguidance: bool = False,
+    autoguidance_ratio: float = 0.5,
+    guidance_weight: float = 0.8,
+    autoguidance_scaling: Literal["constant", "linear", "exp", "sigmoid"] = "linear",
+    autoguidance_min_sigma_cutoff: float = 1.0,
 ) -> None:
     """Run predictions with Boltz-1."""
     # If cpu, write a friendly warning
@@ -687,6 +716,7 @@ def predict(
         use_msa_server=use_msa_server,
         msa_server_url=msa_server_url,
         msa_pairing_strategy=msa_pairing_strategy,
+        custom_msa_dir=Path(custom_msa_dir) if custom_msa_dir else None,
     )
 
     # Load processed data
@@ -695,9 +725,6 @@ def predict(
         manifest=Manifest.load(processed_dir / "manifest.json"),
         targets_dir=processed_dir / "structures",
         msa_dir=processed_dir / "msa",
-        constraints_dir=(processed_dir / "constraints")
-        if (processed_dir / "constraints").exists()
-        else None,
     )
 
     # Create data module
@@ -706,7 +733,6 @@ def predict(
         target_dir=processed.targets_dir,
         msa_dir=processed.msa_dir,
         num_workers=num_workers,
-        constraints_dir=processed.constraints_dir,
     )
 
     # Load model
@@ -723,26 +749,78 @@ def predict(
     }
     diffusion_params = BoltzDiffusionParams()
     diffusion_params.step_scale = step_scale
+    
+    if not use_lora:
+        # Standard model loading without LoRA
+        model_module: Boltz1 = Boltz1.load_from_checkpoint(
+            checkpoint,
+            strict=True,
+            predict_args=predict_args,
+            map_location="cpu",
+            diffusion_process_args=asdict(diffusion_params),
+            ema=False,
+        )
+    else:
 
-    pairformer_args = PairformerArgs()
-    msa_module_args = MSAModuleArgs()
+        # Load model with strict=False to allow for missing LoRA parameters
+        model_module: Boltz1 = Boltz1.load_from_checkpoint(
+            checkpoint,
+            strict=False,
+            predict_args=predict_args,
+            map_location="cpu",
+            diffusion_process_args=asdict(diffusion_params),
+            ema=False,
+        )
+        
+        # Parse LoRA modules configuration
+        lora_modules_dict = {module: True for module in lora_modules.split(',')}
+        click.echo(f"Applying LoRA to modules: {lora_modules_dict}")
+        
+        # Create finetune config for LoRA setup
+        finetune_config = {
+            "use_lora": True,
+            "lora_r": lora_r,
+            "lora_alpha": lora_alpha,
+            "lora_dropout": lora_dropout,
+            "lora_modules": lora_modules_dict,
+            "lora_layer_types": {"linear": True, "embedding": True, "attention": True},
+            "freeze_all": True  # We want to freeze all parameters for inference
+        }
+        
+        # Set the finetune_config attribute
+        model_module.finetune_config = finetune_config
+        
+        # Apply LoRA layers
+        click.echo("Setting up LoRA layers")
+        model_module.setup_lora_finetuning()
+        
+        # Mark only LoRA parameters as trainable (even though we're in inference mode)
+        lora.mark_only_lora_as_trainable(model_module, "none")
+        
+        # Reload the state dict to ensure LoRA weights are properly loaded
+        checkpoint_dict = torch.load(checkpoint, map_location="cpu")
+        model_module.load_state_dict(checkpoint_dict["state_dict"], strict=False)
+        
+        click.echo("LoRA layers successfully applied")
 
-    steering_args = BoltzSteeringParams()
-    if no_potentials:
-        steering_args.fk_steering = False
-        steering_args.guidance_update = False
+    # Configure autoguidance if requested
+    if use_autoguidance:
+        click.echo(f"Configuring Enhanced Autoguidance Mechanism with: ratio={autoguidance_ratio}, "
+                   f"weight={guidance_weight}, scaling={autoguidance_scaling}, "
+                   f"min_sigma_cutoff={autoguidance_min_sigma_cutoff}")
+        
+        model_module.configure_autoguidance(
+            scaling=autoguidance_scaling,
+            min_sigma_cutoff=autoguidance_min_sigma_cutoff,
+        )
+        
+        # Update predict_args to include autoguidance parameters
+        predict_args.update({
+            "autoguidance_ratio": autoguidance_ratio,
+            "guidance_weight": guidance_weight
+        })
+        model_module.predict_args = predict_args
 
-    model_module: Boltz1 = Boltz1.load_from_checkpoint(
-        checkpoint,
-        strict=True,
-        predict_args=predict_args,
-        map_location="cpu",
-        diffusion_process_args=asdict(diffusion_params),
-        ema=False,
-        pairformer_args=asdict(pairformer_args),
-        msa_module_args=asdict(msa_module_args),
-        steering_args=asdict(steering_args),
-    )
     model_module.eval()
 
     # Create prediction writer
@@ -752,7 +830,8 @@ def predict(
         output_format=output_format,
     )
 
-    # Early stopping?
+    # load Trainer -> default_root_dir, strategy, callbacks
+
     trainer = Trainer(
         default_root_dir=out_dir,
         strategy=strategy,
