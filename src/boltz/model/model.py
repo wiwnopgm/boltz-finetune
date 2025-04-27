@@ -1,7 +1,6 @@
 import gc
 import random
 from typing import Any, Optional
-from typing import Any, Optional
 
 import torch
 import torch._dynamo
@@ -77,7 +76,6 @@ class Boltz1(LightningModule):
         min_dist: float = 2.0,
         max_dist: float = 22.0,
         predict_args: Optional[dict[str, Any]] = None,
-        finetune_config: Optional[dict[str, Any]] = None,
     ) -> None:
         super().__init__()
 
@@ -271,7 +269,6 @@ class Boltz1(LightningModule):
     ) -> dict[str, Tensor]:
         dict_out = {}
 
-
         # Compute input embeddings
         with torch.set_grad_enabled(
             self.training and self.structure_prediction_training
@@ -288,7 +285,6 @@ class Boltz1(LightningModule):
             z_init = z_init + relative_position_encoding
             z_init = z_init + self.token_bonds(feats["token_bonds"].float())
 
-
             # Perform rounds of the pairwise stack
             s = torch.zeros_like(s_init)
             z = torch.zeros_like(z_init)
@@ -296,7 +292,6 @@ class Boltz1(LightningModule):
             # Compute pairwise mask
             mask = feats["token_pad_mask"].float()
             pair_mask = mask[:, :, None] * mask[:, None, :]
-
 
             for i in range(recycling_steps + 1):
                 with torch.set_grad_enabled(self.training and (i == recycling_steps)):
@@ -311,12 +306,9 @@ class Boltz1(LightningModule):
                     # Apply recycling
                     s = s_init + self.s_recycle(self.s_norm(s))
                     z = z_init + self.z_recycle(self.z_norm(z))
-                    s = s_init + self.s_recycle(self.s_norm(s))
-                    z = z_init + self.z_recycle(self.z_norm(z))
 
                     # Compute pairwise stack
                     if not self.no_msa:
-                        z = z + self.msa_module(z, s_inputs, feats)
                         z = z + self.msa_module(z, s_inputs, feats)
 
                     # Revert to uncompiled version for validation
@@ -324,7 +316,6 @@ class Boltz1(LightningModule):
                         pairformer_module = self.pairformer_module._orig_mod  # noqa: SLF001
                     else:
                         pairformer_module = self.pairformer_module
-
 
                     s, z = pairformer_module(s, z, mask=mask, pair_mask=pair_mask)
 
@@ -635,11 +626,7 @@ class Boltz1(LightningModule):
             pred_softmax = pred_softmax.argmax(dim=-1)
             pred_softmax = torch.nn.functional.one_hot(
                 pred_softmax, num_classes=preds.shape[-1]
-            pred_softmax = pred_softmax.argmax(dim=-1)
-            pred_softmax = torch.nn.functional.one_hot(
-                pred_softmax, num_classes=preds.shape[-1]
             )
-            pred_dist = (pred_softmax * mid_points).sum(dim=-1)
             pred_dist = (pred_softmax * mid_points).sum(dim=-1)
             true_center = batch["disto_center"]
             true_dists = torch.cdist(true_center, true_center)
