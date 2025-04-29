@@ -36,6 +36,8 @@ from boltz.model.modules.trunk import (
 from boltz.model.modules.utils import ExponentialMovingAverage
 from boltz.model.optim.scheduler import AlphaFoldLRScheduler
 
+from boltz.model.modules.lora import LoRALinear, LoRAEmbedding, LoRAAttentionPairBias
+from boltz.model.layers.attention import AttentionPairBias
 
 class Boltz1(LightningModule):
     """Boltz1 model."""
@@ -76,6 +78,7 @@ class Boltz1(LightningModule):
         min_dist: float = 2.0,
         max_dist: float = 22.0,
         predict_args: Optional[dict[str, Any]] = None,
+        finetune_config: Optional[dict[str, Any]] = None,
     ) -> None:
         super().__init__()
 
@@ -1178,6 +1181,9 @@ class Boltz1(LightningModule):
     def configure_optimizers(self):
         """Configure the optimizer."""
 
+        # Apply finetuning configuration
+        self.setup_finetuning()
+
         if self.structure_prediction_training:
             parameters = [p for p in self.parameters() if p.requires_grad]
         else:
@@ -1261,3 +1267,197 @@ class Boltz1(LightningModule):
 
     def on_test_start(self) -> None:
         self.prepare_eval()
+
+    def setup_finetuning(self) -> None:
+        """Configure which layers to freeze/unfreeze based on finetune_config.
+        
+        This supports both conventional parameter freezing and LoRA fine-tuning.
+        """
+        if not self.finetune_config:
+            return
+            
+        # Default to freezing all layers if not specified
+        freeze_all = self.finetune_config.get('freeze_all', True)
+        
+        # Get specific layer configurations
+        freeze_msa_module = self.finetune_config.get('freeze_msa_module', freeze_all)
+        freeze_confidence = self.finetune_config.get('freeze_confidence', freeze_all)
+        freeze_structure = self.finetune_config.get('freeze_structure', freeze_all)
+        
+        # Check if we're using LoRA fine-tuning
+        use_lora = self.finetune_config.get('use_lora', False)
+        
+        # First freeze all parameters if needed
+        if freeze_all:
+            for param in self.parameters():
+                param.requires_grad = False
+        
+        # If using LoRA, apply it to the modules specified
+        if use_lora:
+            self.setup_lora_finetuning()
+        else:
+            # Standard fine-tuning approaced
+            
+            # Unfreeze embedding layers if requested
+            if not freeze_msa_module:
+                for name, param in self.named_parameters():
+                    if any(x in name for x in ['input_embedder', 'rel_pos', 'token_bonds', 's_init', 'z_init']):
+                        param.requires_grad = True
+
+            # Unfreeze structure module if requested
+            if not freeze_structure and self.structure_prediction_training:
+                for name, param in self.named_parameters():
+                    if 'structure_module' in name:
+                        param.requires_grad = True
+                        
+            # Unfreeze confidence module if requested
+            if not freeze_confidence and self.confidence_prediction:
+                for name, param in self.named_parameters():
+                    if 'confidence_module' in name:
+                        param.requires_grad = True
+                        
+    def setup_lora_finetuning(self) -> None:
+        """Set up LoRA fine-tuning by replacing layers in specified modules with LoRA equivalents."""
+        # Get LoRA configuration
+        lora_r = self.finetune_config.get('lora_r', 8)
+        lora_alpha = self.finetune_config.get('lora_alpha', 16)
+        lora_dropout = self.finetune_config.get('lora_dropout', 0.1)
+        
+        # Get which modules to apply LoRA to
+        lora_modules = self.finetune_config.get('lora_modules', {})
+
+        if len(lora_modules) == 0:
+            raise ValueError("lora_modules must be a non-empty dictionary")
+        
+        # Get layer type filters
+        lora_layer_types = self.finetune_config.get('lora_layer_types', {})
+
+        if len(lora_layer_types) == 0:
+            raise ValueError("lora_layer_types must be a non-empty dictionary")
+            
+        # Store layer types for later use in device synchronization
+        self.lora_layer_types = (LoRALinear, LoRAEmbedding, LoRAAttentionPairBias)
+    
+        if lora_modules.get('structure', False) and self.structure_prediction_training:
+            self._apply_lora_to_module(self.structure_module, lora_r, lora_alpha, lora_dropout, lora_layer_types)
+        
+        if lora_modules.get('confidence', False) and self.confidence_prediction:
+            self._apply_lora_to_module(self.confidence_module, lora_r, lora_alpha, lora_dropout, lora_layer_types)
+            
+        # Mark that LoRA has been applied to this model
+        self._lora_applied = True
+        print("LoRA applied flag: ", self._lora_applied)
+        
+        # If the model is already on a specific device, ensure LoRA layers are there too
+        if hasattr(self, 'device') and self.device.type != 'cpu':
+            self.to(self.device)
+
+    def _apply_lora_to_module(
+        self, 
+        module: nn.Module, 
+        r: int, 
+        lora_alpha: float, 
+        lora_dropout: float,
+        layer_types: dict[str, bool]
+    ) -> None:
+        """Apply LoRA to all eligible layers within a module.
+        
+        Args:
+            module: The module to apply LoRA to
+            r: LoRA rank parameter
+            lora_alpha: LoRA alpha parameter
+            lora_dropout: Dropout rate for LoRA layers
+            layer_types: Dictionary specifying which layer types to apply LoRA to
+        """
+        # First collect all modules that need to be LoRA-fied to avoid modifying
+        # the module structure while iterating over it
+        modules_to_transform = {}
+        
+        for name, submodule in module.named_children():
+            # Check if module type should be converted to LoRA version
+            if isinstance(submodule, nn.Linear) and layer_types.get('linear', True):
+                modules_to_transform[name] = {
+                    'type': 'linear', 
+                    'module': submodule
+                }
+            elif isinstance(submodule, nn.Embedding) and layer_types.get('embedding', True):
+                modules_to_transform[name] = {
+                    'type': 'embedding', 
+                    'module': submodule
+                }
+            elif isinstance(submodule, AttentionPairBias) and layer_types.get('attention', True):
+                modules_to_transform[name] = {
+                    'type': 'attention', 
+                    'module': submodule
+                }
+            else:
+                # Recursively apply LoRA to submodules
+                self._apply_lora_to_module(submodule, r, lora_alpha, lora_dropout, layer_types)
+        
+        # Now transform the collected modules
+        for name, info in modules_to_transform.items():
+            submodule = info['module']
+            try:
+                if info['type'] == 'linear':
+                    # Skip if it doesn't have expected attributes
+                    if not hasattr(submodule, 'in_features') or not hasattr(submodule, 'out_features'):
+                        print(f"Warning: Linear module {name} doesn't have expected attributes, skipping")
+                        continue
+                        
+                    # Create LoRA equivalent
+                    lora_linear = LoRALinear(
+                        in_features=submodule.in_features, 
+                        out_features=submodule.out_features,
+                        r=r,
+                        lora_alpha=lora_alpha,
+                        lora_dropout=lora_dropout,
+                        bias=submodule.bias is not None
+                    )
+                    
+                    # Copy original weights
+                    with torch.no_grad():
+                        lora_linear.weight.copy_(submodule.weight)
+                        if submodule.bias is not None:
+                            lora_linear.bias.copy_(submodule.bias)
+                    
+                    # Replace the original module
+                    setattr(module, name, lora_linear)
+                
+                elif info['type'] == 'embedding':
+                    # Skip if it doesn't have expected attributes
+                    if not hasattr(submodule, 'num_embeddings') or not hasattr(submodule, 'embedding_dim'):
+                        print(f"Warning: Embedding module {name} doesn't have expected attributes, skipping")
+                        continue
+                        
+                    # Create LoRA equivalent
+                    lora_embedding = LoRAEmbedding(
+                        num_embeddings=submodule.num_embeddings,
+                        embedding_dim=submodule.embedding_dim,
+                        r=r,
+                        lora_alpha=lora_alpha,
+                        lora_dropout=lora_dropout
+                    )
+                    
+                    # Copy original weights
+                    with torch.no_grad():
+                        lora_embedding.weight.copy_(submodule.weight)
+                    
+                    # Replace the original module
+                    setattr(module, name, lora_embedding)
+                
+                elif info['type'] == 'attention':
+                    # Create LoRA equivalent
+                    lora_attention = LoRAAttentionPairBias(
+                        attention_module=submodule,
+                        r=r,
+                        lora_alpha=lora_alpha,
+                        lora_dropout=lora_dropout
+                    )
+                    
+                    # Replace the original module
+                    setattr(module, name, lora_attention)
+                    
+            except Exception as e:
+                print(f"Error applying LoRA to module {name}: {e}")
+                # Continue with other modules instead of failing completely
+                continue

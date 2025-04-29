@@ -1,278 +1,371 @@
+#  Code from https://github.com/microsoft/LoRA/blob/main/loralib/layers.py, MIT License, Copyright (c) Microsoft Corporation
+#  ------------------------------------------------------------------------------------------
+#  Copyright (c) Microsoft Corporation. All rights reserved.
+#  Licensed under the MIT License (MIT). See LICENSE in the repo root for license information.
+#  ------------------------------------------------------------------------------------------
+
 from __future__ import annotations
 
 from math import sqrt
 import torch
 from torch import nn
-from torch.nn import Module
+from torch import Tensor
 import torch.nn.functional as F
+import math
 
-from boltz.model.modules.diffusion import DiffusionModule
-from boltz.model.layers.attention import AttentionPairBias
+# LoRA implementation
+class LoRALayer:
+    def __init__(
+        self, 
+        r: int, 
+        lora_alpha: int, 
+        lora_dropout: float,
+        merge_weights: bool,
+    ):
+        self.r = r
+        self.lora_alpha = lora_alpha
+        # Optional dropout
+        if lora_dropout > 0.:
+            self.lora_dropout = nn.Dropout(p=lora_dropout)
+        else:
+            self.lora_dropout = lambda x: x
+        # Mark the weight as unmerged
+        self.merged = False
+        self.merge_weights = merge_weights
 
-
-class LoRALinear(nn.Module):
-    """LoRA-adapted linear layer"""
+class LoRALinear(nn.Linear, LoRALayer):
     
+    # LoRA implemented in a dense layer
+    def __init__(
+        self, 
+        in_features: int, 
+        out_features: int, 
+        r: int = 0, 
+        lora_alpha: int = 1, 
+        lora_dropout: float = 0.,
+        fan_in_fan_out: bool = False, # Set this to True if the layer to replace stores weight like (fan_in, fan_out)
+        merge_weights: bool = True,
+        **kwargs
+    ):
+        nn.Linear.__init__(self, in_features, out_features, **kwargs)
+        LoRALayer.__init__(self, r=r, lora_alpha=lora_alpha, lora_dropout=lora_dropout,
+                           merge_weights=merge_weights)
+
+        self.fan_in_fan_out = fan_in_fan_out
+
+        # Actual trainable parameters
+        if r > 0:
+            self.lora_A = nn.Parameter(self.weight.new_zeros((r, in_features)))
+            self.lora_B = nn.Parameter(self.weight.new_zeros((out_features, r)))
+            self.scaling = self.lora_alpha / self.r
+            # Freezing the pre-trained weight matrix
+            self.weight.requires_grad = False
+        self.reset_parameters()
+        # 
+        if fan_in_fan_out:
+            self.weight.data = self.weight.data.transpose(0, 1)
+
+    def reset_parameters(self):
+        nn.Linear.reset_parameters(self)
+        if hasattr(self, 'lora_A'):
+            # initialize B the same way as the default for nn.Linear and A to zero
+            nn.init.kaiming_uniform_(self.lora_A, a=math.sqrt(5))
+            nn.init.zeros_(self.lora_B)
+
+    def train(self, mode: bool = True):
+        def T(w):
+            return w.transpose(0, 1) if self.fan_in_fan_out else w
+        nn.Linear.train(self, mode)
+        if mode:
+            if self.merge_weights and self.merged:
+                # Make sure that the weights are not merged
+                if self.r > 0:
+                    self.weight.data -= T(self.lora_B @ self.lora_A) * self.scaling
+                self.merged = False
+        else:
+            if self.merge_weights and not self.merged:
+                # Merge the weights and mark it
+                if self.r > 0:
+                    self.weight.data += T(self.lora_B @ self.lora_A) * self.scaling
+                self.merged = True       
+
+    def forward(self, x: torch.Tensor):
+        def T(w):
+            return w.transpose(0, 1) if self.fan_in_fan_out else w
+        if self.r > 0 and not self.merged:
+            result = F.linear(x, T(self.weight), bias=self.bias)            
+            result += (self.lora_dropout(x) @ self.lora_A.transpose(0, 1) @ self.lora_B.transpose(0, 1)) * self.scaling
+            return result
+        else:
+            return F.linear(x, T(self.weight), bias=self.bias)
+
+
+class LoRAEmbedding(nn.Embedding, LoRALayer):
+    # LoRA implemented in an embedding layer
     def __init__(
         self,
-        linear_layer,
-        rank=8,
-        alpha=16,
-        dropout=0.0,
-        bias=True,
+        num_embeddings: int,
+        embedding_dim: int,
+        r: int = 0,
+        lora_alpha: int = 1,
+        merge_weights: bool = True,
+        **kwargs
     ):
-        super().__init__()
+        nn.Embedding.__init__(self, num_embeddings, embedding_dim, **kwargs)
+        LoRALayer.__init__(self, r=r, lora_alpha=lora_alpha, lora_dropout=0,
+                           merge_weights=merge_weights)
+        # Actual trainable parameters
+        if r > 0:
+            self.lora_A = nn.Parameter(self.weight.new_zeros((r, num_embeddings)))
+            self.lora_B = nn.Parameter(self.weight.new_zeros((embedding_dim, r)))
+            self.scaling = self.lora_alpha / self.r
+            # Freezing the pre-trained weight matrix
+            self.weight.requires_grad = False
+        self.reset_parameters()
+
+    def reset_parameters(self):
+        nn.Embedding.reset_parameters(self)
+        if hasattr(self, 'lora_A'):
+            # initialize A the same way as the default for nn.Linear and B to zero
+            nn.init.zeros_(self.lora_A)
+            nn.init.normal_(self.lora_B)
+            # use normal distribution for the weights in embedding layers
+
+    def train(self, mode: bool = True):
+        nn.Embedding.train(self, mode)
+        if mode:
+            if self.merge_weights and self.merged:
+                # Make sure that the weights are not merged
+                if self.r > 0:
+                    self.weight.data -= (self.lora_B @ self.lora_A).transpose(0, 1) * self.scaling
+                self.merged = False
+        else:
+            if self.merge_weights and not self.merged:
+                # Merge the weights and mark it
+                if self.r > 0:
+                    self.weight.data += (self.lora_B @ self.lora_A).transpose(0, 1) * self.scaling
+                self.merged = True
         
-        self.linear = linear_layer
-        self.rank = rank
-        self.alpha = alpha
-        self.scaling = alpha / rank
-        
-        # Freeze the original weights
-        for param in self.linear.parameters():
-            param.requires_grad = False
-            
-        # Create LoRA matrices
-        in_features = self.linear.in_features
-        out_features = self.linear.out_features
-        
-        self.lora_A = nn.Parameter(torch.zeros(in_features, rank))
-        self.lora_B = nn.Parameter(torch.zeros(rank, out_features))
-        nn.init.kaiming_uniform_(self.lora_A, a=sqrt(5))
-        nn.init.zeros_(self.lora_B)
-        
-        self.dropout = nn.Dropout(p=dropout) if dropout > 0 else nn.Identity()
-        
-        # Add bias if needed
-        self.bias = nn.Parameter(torch.zeros(out_features)) if bias else None
-        
-    def forward(self, x):
-        # Original linear layer
-        base_output = self.linear(x)
-        
-        # LoRA path
-        lora_output = (self.dropout(x) @ self.lora_A @ self.lora_B) * self.scaling
-        
-        # Add bias if present
-        if self.bias is not None:
-            lora_output = lora_output + self.bias
-            
-        return base_output + lora_output
+    def forward(self, x: torch.Tensor):
+        if self.r > 0 and not self.merged:
+            result = nn.Embedding.forward(self, x)
+            after_A = F.embedding(
+                x, self.lora_A.transpose(0, 1), self.padding_idx, self.max_norm,
+                self.norm_type, self.scale_grad_by_freq, self.sparse
+            )
+            result += (after_A @ self.lora_B.transpose(0, 1)) * self.scaling
+            return result
+        else:
+            return nn.Embedding.forward(self, x)
 
 
-class LoRAAttentionPairBias(nn.Module):
+class LoRAAttentionPairBias(nn.Module, LoRALayer):
     """LoRA-adapted attention pair bias layer"""
     
     def __init__(
         self,
         attention_module,
-        rank=8,
-        alpha=16,
-        dropout=0.0,
+        r: int = 8,
+        lora_alpha: int = 16,
+        lora_dropout: float = 0.0,
+        merge_weights: bool = True,
     ):
-        super().__init__()
+        nn.Module.__init__(self)
+        LoRALayer.__init__(self, r=r, lora_alpha=lora_alpha, 
+                           lora_dropout=lora_dropout, merge_weights=merge_weights)
         
+        # Store original attention module
         self.attention = attention_module
-        self.rank = rank
-        self.alpha = alpha
-        self.scaling = alpha / rank
         
-        # Freeze the original weights
+        # Copy necessary attributes from original module
+        self.c_s = self.attention.c_s
+        self.num_heads = self.attention.num_heads
+        self.head_dim = self.c_s // self.num_heads
+        self.inf = getattr(self.attention, 'inf', 1e9)
+        
+        # Freeze all original parameters
         for param in self.attention.parameters():
             param.requires_grad = False
+        
+        # Create a new trainable adapter (instead of using the frozen one)
+        self.adapter_g = nn.Sequential(
+            nn.Linear(self.c_s, self.c_s),
+            nn.SiLU(),
+            nn.Linear(self.c_s, self.c_s),
+        )
+        
+        # Create LoRA wrapped versions of proj_g and proj_o
+        # Keep original architecture but add LoRA fine-tuning capability
+        if hasattr(self.attention, 'proj_g'):
+            orig_proj_g = self.attention.proj_g
+            self.proj_g = LoRALinear(
+                in_features=orig_proj_g.in_features,
+                out_features=orig_proj_g.out_features,
+                r=r,
+                lora_alpha=lora_alpha,
+                lora_dropout=lora_dropout,
+                merge_weights=merge_weights,
+                bias=orig_proj_g.bias is not None
+            )
+            # Copy the original weights
+            with torch.no_grad():
+                self.proj_g.weight.copy_(orig_proj_g.weight)
+                if orig_proj_g.bias is not None:
+                    self.proj_g.bias.copy_(orig_proj_g.bias)
+        
+        if hasattr(self.attention, 'proj_o'):
+            orig_proj_o = self.attention.proj_o
+            self.proj_o = LoRALinear(
+                in_features=orig_proj_o.in_features,
+                out_features=orig_proj_o.out_features,
+                r=r,
+                lora_alpha=lora_alpha,
+                lora_dropout=lora_dropout,
+                merge_weights=merge_weights,
+                bias=orig_proj_o.bias is not None
+            )
+            # Copy the original weights
+            with torch.no_grad():
+                self.proj_o.weight.copy_(orig_proj_o.weight)
+                if orig_proj_o.bias is not None:
+                    self.proj_o.bias.copy_(orig_proj_o.bias)
+        
+        # Create LoRA parameters for low-rank adaptation
+        if r > 0:
+            # Create LoRA matrices for query, key, value projections
+            self.lora_q_A = nn.Parameter(torch.zeros(r, self.c_s))
+            self.lora_q_B = nn.Parameter(torch.zeros(self.c_s, r))
+            self.lora_k_A = nn.Parameter(torch.zeros(r, self.c_s))
+            self.lora_k_B = nn.Parameter(torch.zeros(self.c_s, r))
+            self.lora_v_A = nn.Parameter(torch.zeros(r, self.c_s))
+            self.lora_v_B = nn.Parameter(torch.zeros(self.c_s, r))
+            self.scaling = self.lora_alpha / self.r
             
-        # Create LoRA matrices for query, key, value projections
-        c_s = self.attention.c_s
-        num_heads = self.attention.num_heads
-        head_dim = c_s // num_heads
+            # Initialize LoRA parameters
+            self.reset_parameters()
+    
+    def reset_parameters(self):
+        """Initialize LoRA weights for attention adapter"""
+        if hasattr(self, 'lora_q_A'):
+            # Initialize A matrices with Kaiming uniform
+            for lora_A in [self.lora_q_A, self.lora_k_A, self.lora_v_A]:
+                nn.init.kaiming_uniform_(lora_A, a=math.sqrt(5))
+            # Initialize B matrices with zeros
+            for lora_B in [self.lora_q_B, self.lora_k_B, self.lora_v_B]:
+                nn.init.zeros_(lora_B)
+
+    def train(self, mode: bool = True):
+        """Handle train/eval mode switching with weight merging"""
+        nn.Module.train(self, mode)
+        # Always keep original attention in eval mode
+        self.attention.eval()
         
-        # Create LoRA matrices for each projection
-        self.lora_q_A = nn.Parameter(torch.zeros(c_s, rank))
-        self.lora_q_B = nn.Parameter(torch.zeros(rank, c_s))
-        self.lora_k_A = nn.Parameter(torch.zeros(c_s, rank))
-        self.lora_k_B = nn.Parameter(torch.zeros(rank, c_s))
-        self.lora_v_A = nn.Parameter(torch.zeros(c_s, rank))
-        self.lora_v_B = nn.Parameter(torch.zeros(rank, c_s))
+        if mode:
+            # Training mode: ensure weights are unmerged
+            if self.merge_weights and self.merged:
+                self._unmerge_weights()
+                self.merged = False
+        else:
+            # Eval mode: merge weights if configured
+            if self.merge_weights and not self.merged:
+                self._merge_weights()
+                self.merged = True
+    
+    def _merge_weights(self):
+        """Merge LoRA weights into original weights for efficient inference"""
+        # Add LoRA weights to the original weights
+        self.attention.proj_q.weight.data += (self.lora_q_B @ self.lora_q_A) * self.scaling
+        self.attention.proj_k.weight.data += (self.lora_k_B @ self.lora_k_A) * self.scaling
+        self.attention.proj_v.weight.data += (self.lora_v_B @ self.lora_v_A) * self.scaling
+    
+    def _unmerge_weights(self):
+        """Remove LoRA weights from original weights"""
+        # Subtract the LoRA weights
+        self.attention.proj_q.weight.data -= (self.lora_q_B @ self.lora_q_A) * self.scaling
+        self.attention.proj_k.weight.data -= (self.lora_k_B @ self.lora_k_A) * self.scaling
+        self.attention.proj_v.weight.data -= (self.lora_v_B @ self.lora_v_A) * self.scaling
+
+    def forward(
+        self,
+        s: Tensor,
+        z: Tensor,
+        mask: Tensor,
+        multiplicity: int = 1,
+        to_keys=None,
+        model_cache=None,
+    ) -> Tensor:
+        """Forward pass with LoRA adapter for attention"""
+        # If in eval mode with merged weights, use original attention directly
+        if not self.training and self.merged:
+            return self.attention(s, z, mask, multiplicity, to_keys, model_cache)
         
-        # Initialize LoRA weights
-        for lora_A in [self.lora_q_A, self.lora_k_A, self.lora_v_A]:
-            nn.init.kaiming_uniform_(lora_A, a=sqrt(5))
-        for lora_B in [self.lora_q_B, self.lora_k_B, self.lora_v_B]:
-            nn.init.zeros_(lora_B)
-            
-        self.dropout = nn.Dropout(p=dropout) if dropout > 0 else nn.Identity()
-        
-    def forward(self, s, z, mask, multiplicity=1, to_keys=None, model_cache=None):
-        # Apply LoRA to query, key, value projections
+        # Get batch size
         B = s.shape[0]
         
-        # Layer norms (if any)
-        if self.attention.initial_norm:
+        # Handle input normalization and key input
+        if hasattr(self.attention, 'initial_norm') and self.attention.initial_norm:
             s = self.attention.norm_s(s)
             
-        # Handle to_keys if provided
         if to_keys is not None:
             k_in = to_keys(s)
             mask = to_keys(mask.unsqueeze(-1)).squeeze(-1)
         else:
             k_in = s
+        
+        # Get projections from original module (without gradients)
+        with torch.no_grad():
+            q = self.attention.proj_q(s).view(B, -1, self.num_heads, self.head_dim)
+            k = self.attention.proj_k(k_in).view(B, -1, self.num_heads, self.head_dim)
+            v = self.attention.proj_v(k_in).view(B, -1, self.num_heads, self.head_dim)
+        
+        # Add LoRA contributions if rank > 0
+        if self.r > 0:
+            # Apply dropout for training
+            s_drop = self.lora_dropout(s)
+            k_in_drop = self.lora_dropout(k_in)
             
-        # Original projections
-        q = self.attention.proj_q(s)
-        k = self.attention.proj_k(k_in)
-        v = self.attention.proj_v(k_in)
-        
-        # LoRA paths
-        q_lora = (self.dropout(s) @ self.lora_q_A @ self.lora_q_B) * self.scaling
-        k_lora = (self.dropout(k_in) @ self.lora_k_A @ self.lora_k_B) * self.scaling
-        v_lora = (self.dropout(k_in) @ self.lora_v_A @ self.lora_v_B) * self.scaling
-        
-        # Combine original and LoRA projections
-        q = q + q_lora
-        k = k + k_lora
-        v = v + v_lora
-        
-        # Reshape for multi-head attention
-        q = q.view(B, -1, self.attention.num_heads, self.attention.head_dim).transpose(1, 2)
-        k = k.view(B, -1, self.attention.num_heads, self.attention.head_dim).transpose(1, 2)
-        v = v.view(B, -1, self.attention.num_heads, self.attention.head_dim).transpose(1, 2)
-        
-        # Compute attention scores
-        scores = torch.matmul(q, k.transpose(-2, -1)) / sqrt(self.attention.head_dim)
-        
-        # Apply mask if provided
-        if mask is not None:
-            scores = scores.masked_fill(mask.unsqueeze(1).unsqueeze(2) == 0, -self.attention.inf)
+            # Compute LoRA contributions
+            q_lora = (s_drop @ self.lora_q_A.t() @ self.lora_q_B.t()).view(B, -1, self.num_heads, self.head_dim) * self.scaling
+            k_lora = (k_in_drop @ self.lora_k_A.t() @ self.lora_k_B.t()).view(B, -1, self.num_heads, self.head_dim) * self.scaling
+            v_lora = (k_in_drop @ self.lora_v_A.t() @ self.lora_v_B.t()).view(B, -1, self.num_heads, self.head_dim) * self.scaling
             
-        # Apply softmax
-        attn = F.softmax(scores, dim=-1)
+            # Add LoRA contributions to base projections
+            q = q + q_lora
+            k = k + k_lora
+            v = v + v_lora
         
-        # Apply attention to values
-        out = torch.matmul(attn, v)
-        
-        # Reshape back
-        out = out.transpose(1, 2).contiguous().view(B, -1, self.attention.c_s)
-        
-        # Apply output projection
-        out = self.attention.proj_o(out)
-        
-        return out
-
-
-class LoRADiffusionModule(DiffusionModule):
-    """LoRA-adapted diffusion module"""
-    
-    def __init__(
-        self,
-        *args,
-        lora_rank=8,
-        lora_alpha=16,
-        lora_dropout=0.0,
-        **kwargs,
-    ):
-        super().__init__(*args, **kwargs)
-        
-        self.lora_rank = lora_rank
-        self.lora_alpha = lora_alpha
-        self.lora_dropout = lora_dropout
-        
-        # Apply LoRA to key components
-        self._apply_lora()
-        
-    def _apply_lora(self):
-        """Apply LoRA to key components of the diffusion module"""
-        
-        # Apply LoRA to the s_to_a_linear layer
-        if hasattr(self, 's_to_a_linear') and len(self.s_to_a_linear) > 1:
-            self.s_to_a_linear[1] = LoRALinear(
-                self.s_to_a_linear[1],
-                rank=self.lora_rank,
-                alpha=self.lora_alpha,
-                dropout=self.lora_dropout,
-            )
+        # Process Z tensor (pairwise bias)
+        with torch.no_grad():
+            if model_cache is None or "z" not in model_cache:
+                z = self.attention.proj_z(z)
+                if model_cache is not None:
+                    model_cache["z"] = z
+            else:
+                z = model_cache["z"]
             
-        # Apply LoRA to the token transformer
-        if hasattr(self, 'token_transformer'):
-            # Apply LoRA to each transformer layer
-            for i, layer in enumerate(self.token_transformer.layers):
-                if hasattr(layer, 'attn'):
-                    layer.attn = LoRAAttentionPairBias(
-                        layer.attn,
-                        rank=self.lora_rank,
-                        alpha=self.lora_alpha,
-                        dropout=self.lora_dropout,
-                    )
-                    
-        # Apply LoRA to the atom attention encoder
-        if hasattr(self, 'atom_attention_encoder'):
-            # First collect all attention modules that need to be replaced
-            attention_modules = {}
-            for name, module in self.atom_attention_encoder.named_modules():
-                if isinstance(module, AttentionPairBias):
-                    attention_modules[name] = module
-            
-            # Then replace them
-            for name, module in attention_modules.items():
-                parent_name = '.'.join(name.split('.')[:-1])
-                module_name = name.split('.')[-1]
-                if parent_name:
-                    parent = self.atom_attention_encoder.get_submodule(parent_name)
-                else:
-                    parent = self.atom_attention_encoder
-                setattr(parent, module_name, LoRAAttentionPairBias(
-                    module,
-                    rank=self.lora_rank,
-                    alpha=self.lora_alpha,
-                    dropout=self.lora_dropout,
-                ))
-            
-        # Apply LoRA to the atom attention decoder
-        if hasattr(self, 'atom_attention_decoder'):
-            # First collect all attention modules that need to be replaced
-            attention_modules = {}
-            for name, module in self.atom_attention_decoder.named_modules():
-                if isinstance(module, AttentionPairBias):
-                    attention_modules[name] = module
-            
-            # Then replace them
-            for name, module in attention_modules.items():
-                parent_name = '.'.join(name.split('.')[:-1])
-                module_name = name.split('.')[-1]
-                if parent_name:
-                    parent = self.atom_attention_decoder.get_submodule(parent_name)
-                else:
-                    parent = self.atom_attention_decoder
-                setattr(parent, module_name, LoRAAttentionPairBias(
-                    module,
-                    rank=self.lora_rank,
-                    alpha=self.lora_alpha,
-                    dropout=self.lora_dropout,
-                ))
-            
-    def save_lora_weights(self, path):
-        """Save only the LoRA weights"""
-        lora_state_dict = {}
+            # Repeat for multiplicity
+            z = z.repeat_interleave(multiplicity, 0)
         
-        # Collect LoRA weights from all adapted modules
-        for name, module in self.named_modules():
-            if isinstance(module, (LoRALinear, LoRAAttentionPairBias)):
-                lora_state_dict[f"{name}.lora_A"] = module.lora_A
-                lora_state_dict[f"{name}.lora_B"] = module.lora_B
-                if hasattr(module, 'bias') and module.bias is not None:
-                    lora_state_dict[f"{name}.bias"] = module.bias
-                    
-        torch.save(lora_state_dict, path)
+        # Process adapter and get gating factor
+        s_adapter = self.adapter_g(s)
+        g = self.proj_g(s_adapter).sigmoid()
         
-    def load_lora_weights(self, path):
-        """Load only the LoRA weights"""
-        lora_state_dict = torch.load(path)
+        # Compute attention (in float32 for stability)
+        with torch.autocast("cuda", enabled=False):
+            # Compute attention scores
+            attn = torch.einsum("bihd,bjhd->bhij", q.float(), k.float())
+            attn = attn / (self.head_dim**0.5) + z.float()
+            attn = attn + (1 - mask[:, None, None].float()) * -self.inf
+            attn = attn.softmax(dim=-1)
+            
+            # Apply attention to values
+            o = torch.einsum("bhij,bjhd->bihd", attn, v.float()).to(v.dtype)
         
-        # Load LoRA weights into adapted modules
-        for name, module in self.named_modules():
-            if isinstance(module, (LoRALinear, LoRAAttentionPairBias)):
-                if f"{name}.lora_A" in lora_state_dict:
-                    module.lora_A.data = lora_state_dict[f"{name}.lora_A"]
-                if f"{name}.lora_B" in lora_state_dict:
-                    module.lora_B.data = lora_state_dict[f"{name}.lora_B"]
-                if hasattr(module, 'bias') and module.bias is not None and f"{name}.bias" in lora_state_dict:
-                    module.bias.data = lora_state_dict[f"{name}.bias"] 
+        # Reshape output
+        o = o.reshape(B, -1, self.c_s)
+        
+        # Apply gating and output projection with LoRA
+        o = g * o
+        o = self.proj_o(o)
+        
+        return o
