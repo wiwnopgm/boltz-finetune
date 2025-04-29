@@ -1461,3 +1461,100 @@ class Boltz1(LightningModule):
                 print(f"Error applying LoRA to module {name}: {e}")
                 # Continue with other modules instead of failing completely
                 continue
+
+    def configure_autoguidance(
+        self, 
+        enable_training=False, 
+        loss_weight=0.1, 
+        consistency_type="mse", 
+        distogram_weight=0.0,
+        scaling="linear",
+        min_sigma_cutoff=1.0,
+        checkpoint_path=None
+    ):
+        """Configure autoguidance parameters for both training and inference.
+        
+        Parameters
+        ----------
+        enable_training : bool, optional
+            Whether to enable autoguidance self-supervised training, by default False
+        loss_weight : float, optional
+            Weight for autoguidance consistency loss, by default 0.1
+        consistency_type : str, optional
+            Type of consistency loss ("mse", "l1", or "huber"), by default "mse"
+        distogram_weight : float, optional
+            Weight for distogram consistency loss, by default 0.0
+        scaling : str, optional
+            Autoguidance scaling schedule during sampling, by default "linear"
+        min_sigma_cutoff : float, optional
+            Minimum sigma threshold for autoguidance, by default 1.0
+        checkpoint_path : str, optional
+            Path to earlier checkpoint to use for autoguidance model, by default None
+        """
+        # Load model from checkpoint if specified
+        if checkpoint_path:
+            print(f"Loading autoguidance model from checkpoint: {checkpoint_path}")
+            try:
+                # Load the checkpoint
+                checkpoint = torch.load(checkpoint_path, map_location="cpu")
+                
+                # Create a new score model for autoguidance
+                from boltz.model.modules.diffusion import DiffusionModule
+                score_model_ag = DiffusionModule(
+                    **self.structure_module.score_model.__dict__["_modules"]
+                )
+                
+                # Extract state dict for the score model
+                score_model_state_dict = {}
+                for key, value in checkpoint['state_dict'].items():
+                    if key.startswith('structure_module.score_model'):
+                        # Remove the prefix
+                        new_key = key.replace('structure_module.score_model.', '')
+                        score_model_state_dict[new_key] = value
+                
+                # Load state dict to the new score model
+                score_model_ag.load_state_dict(score_model_state_dict)
+                
+                # Freeze the autoguidance model parameters
+                for param in score_model_ag.parameters():
+                    param.requires_grad = False
+                    
+                print("Successfully loaded score model from checkpoint")
+                
+                # Configure autoguidance with the loaded model
+                self.structure_module.configure_autoguidance(
+                    score_model_ag=score_model_ag,
+                    autoguidance_scaling=scaling,
+                    autoguidance_min_sigma_cutoff=min_sigma_cutoff
+                )
+            except Exception as e:
+                print(f"Error loading autoguidance model from checkpoint: {e}")
+                print("Falling back to using current model for autoguidance")
+                self.structure_module.configure_autoguidance(
+                    score_model_ag=self.structure_module.score_model,  # Use the same model for autoguidance
+                    autoguidance_scaling=scaling,
+                    autoguidance_min_sigma_cutoff=min_sigma_cutoff
+                )
+        else:
+            # Create a copy of the model for autoguidance
+            if not hasattr(self.structure_module, "score_model_ag") or self.structure_module.score_model_ag is None:
+                print("Setting up autoguidance model using current weights...")
+                self.structure_module.configure_autoguidance(
+                    score_model_ag=self.structure_module.score_model,  # Use the same model for autoguidance
+                    autoguidance_scaling=scaling,
+                    autoguidance_min_sigma_cutoff=min_sigma_cutoff
+                )
+            else:
+                # Update existing autoguidance parameters
+                self.structure_module.autoguidance_scaling = scaling
+                self.structure_module.autoguidance_min_sigma_cutoff = min_sigma_cutoff
+        
+        # Set training parameters
+        self.enable_autoguidance_training = enable_training
+        self.autoguidance_loss_weight = loss_weight
+        self.autoguidance_consistency_type = consistency_type
+        self.distogram_consistency_weight = distogram_weight
+        
+        print(f"Autoguidance configured: training={enable_training}, scaling={scaling}, cutoff={min_sigma_cutoff}")
+        if enable_training:
+            print(f"Training parameters: loss_weight={loss_weight}, consistency={consistency_type}, distogram_weight={distogram_weight}")

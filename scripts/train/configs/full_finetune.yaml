@@ -185,3 +185,30 @@ model:
     add_smooth_lddt_loss: true
     nucleotide_loss_weight: 5.0
     ligand_loss_weight: 10.0
+
+  # Finetune configuration
+  finetune_config:
+    # Whether to freeze all parameters by default
+    freeze_all: true
+    
+    # Module-specific freeze controls (override freeze_all)
+    freeze_msa_module: true
+    freeze_confidence: false
+    freeze_structure: true
+    
+    # LoRA configuration
+    use_lora: true # false when fine-tuning with full model or specific modules
+    lora_r: 8
+    lora_alpha: 16
+    lora_dropout: 0.1
+    
+    # Which modules to apply LoRA to
+    lora_modules:
+      confidence: true
+      structure: false
+    
+    # Which layer types to apply LoRA to
+    lora_layer_types:
+      linear: true
+      embedding: true
+      attention: true
