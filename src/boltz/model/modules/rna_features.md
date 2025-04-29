@@ -1,4 +1,4 @@
-# Core inputs required:
+Core inputs required:
 feats = {
     # Single sequence features
     "nuc_type": torch.Tensor,            # [batch, seq_len, 4] - One-hot encoded nucleotides
