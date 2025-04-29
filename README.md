@@ -106,47 +106,104 @@ We have enhanced the model with specialized RNA processing capabilities:
 - Custom MSA module with RNA-specific feature extraction
 - Advanced processing of RNA structural features and tertiary interactions
 
-### Inference
+### Fine-tuning Instructions
 
-The model supports multiple inference modes:
+This pipeline supports several fine-tuning approaches, primarily configured through the `finetune_config` section in `scripts/train/configs/full_finetune.yaml`. Here's a detailed explanation of the configuration options:
 
-```python
-# Standard inference
-boltz predict input_path --use_msa_server
-
-# Inference using LoRA fine-tuned model
-boltz predict input_path --use_msa_server --lora_weights path/to/weights
-
-# RNA structure prediction
-boltz predict input_path --use_msa_server --rna_mode
+```yaml
+# Finetune configuration
+finetune_config:
+  # Whether to freeze all parameters by default
+  freeze_all: true
+  
+  # Module-specific freeze controls (override freeze_all)
+  freeze_msa_module: true    # Keep MSA module frozen
+  freeze_confidence: false   # Allow confidence module to be fine-tuned
+  freeze_structure: true     # Keep structure module frozen
+  
+  # LoRA configuration
+  use_lora: true # set to false when fine-tuning with full model or specific modules
+  lora_r: 8      # Rank of LoRA adaptation matrices
+  lora_alpha: 16 # Scaling factor for LoRA
+  lora_dropout: 0.1
+  
+  # Which modules to apply LoRA to
+  lora_modules:
+    confidence: true  # Apply LoRA to confidence module
+    structure: false  # Don't apply LoRA to structure module
+  
+  # Which layer types to apply LoRA to
+  lora_layer_types:
+    linear: true      # Apply to linear layers
+    embedding: true   # Apply to embedding layers
+    attention: true   # Apply to attention mechanisms
 ```
 
-### Hyperparameter Optimization
+#### Fine-tuning Approaches Explained
 
-For systematic hyperparameter optimization, we support parallel training using SLURM job arrays. Use our template script `scripts/train/slurm_scripts/parallel_run_finetune_template.sbatch`:
+1. **Parameter Efficient LoRA Fine-tuning** - Parameter-efficient fine-tuning that adds small trainable rank decomposition matrices to existing weights without modifying the original parameters:
+   - Set `use_lora: true`
+   - Specify modules to apply LoRA to under `lora_modules`. Current options include Linear, Embedding, or AttentionPairBias.
+   - Advantages: Requires less memory, faster training, prevents catastrophic forgetting
+
+2. **Full Model Fine-tuning** - Traditional fine-tuning that updates all model weights:
+   - Set `use_lora: false` and `freeze_all: false`
+   - Advantages: Potentially higher adaptation capability for significantly different tasks
+   - Disadvantages: Requires more GPU memory, risk of overfitting
+
+3. **Selective Module Fine-tuning** - Fine-tune specific components:
+   - Set `use_lora: false`
+   - Set `freeze_all: true`
+   - Set specific module freeze parameters to `false` (e.g., `freeze_confidence: false`)
+
+#### Running Fine-tuning
+
+To start fine-tuning with your configured settings:
 
 ```bash
-# Configure parameter combinations
-export PARAM1_VALUES="0.3 0.5 0.7"  # e.g., train_binder_pocket_conditioned_prop
-export PARAM2_VALUES="1 2 4"        # e.g., batch_size
-export PARAM3_VALUES="0.001 0.0018 0.002"  # e.g., learning_rate
+python scripts/train/train.py scripts/train/configs/full_finetune.yaml
+```
 
-# Set parameter paths in config
-export PARAM1_PATH="data.train_binder_pocket_conditioned_prop"
+#### Key Parameters
+
+- **Learning Rate**: `model.training_args.max_lr=0.0018`
+- **Batch Size**: `data.batch_size=1`
+- **Gradient Accumulation**: `trainer.accumulate_grad_batches=128`
+- **Training Epochs**: `trainer.max_epochs=10` (use `-1` for unlimited)
+- **Output Directory**: `output=/path/to/output`
+
+#### For Distributed Training
+
+For hyperparameter sweeps or distributed training on SLURM clusters, use our template script:
+
+```bash
+# Set parameters to sweep
+export PARAM1_VALUES="0.3 0.5 0.7"  # Example: pocket conditioning proportion
+export PARAM2_VALUES="1 2 4"        # Example: batch size
+export PARAM3_VALUES="0.001 0.0018" # Example: learning rate
+
+# Set parameter paths
+export PARAM1_PATH="data.train_binder_pocket_conditioned_prop" 
 export PARAM2_PATH="data.batch_size"
 export PARAM3_PATH="model.training_args.max_lr"
 
-# Launch parallel jobs in slurm cluster
+# Set job configuration
+export JOB_NAME="boltz_finetune"
+export OUTPUT_BASE_DIR="./output/parameter_sweep"
+export CONFIG_FILE="scripts/train/configs/full_finetune.yaml"
+
+# Launch jobs
 sbatch scripts/train/slurm_scripts/parallel_run_finetune_template.sbatch
 ```
 
-Each job creates a separate output directory with parameter values in the name for easy result comparison.
+Each job in the array will use a different combination of parameters, with results organized in separate output directories for easy comparison.
 
 ### Performance Optimizations
 
 The pipeline includes several optimizations for enhanced training performance:
-- Triton Kernel Optimization (Work in Progress)
-- Additional optimizations coming soon
+- Parameter Efficient LoRA-finetuning
+- RNA-specific MSA module
+- (WIP) Memory bottleneck optimization: Kernel Optimization for MSA module
 
 ### Analysis Tools
 
